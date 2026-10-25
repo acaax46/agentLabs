@@ -70,6 +70,8 @@ tags:
     description: 上传与产物
   - name: Runs
     description: Agent 运行
+  - name: Conversations
+    description: 固定沙箱配置的持久化多轮对话
   - name: ToolCalls
     description: 独立工具调用
   - name: Billing
@@ -77,6 +79,114 @@ tags:
   - name: Admin
     description: 平台管理员
 paths:
+  /conversations:
+    get:
+      tags: [Conversations]
+      operationId: listConversations
+      summary: 当前身份的对话历史
+      parameters:
+        - in: query
+          name: projectId
+          schema: { type: string }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 对话列表，仅包含当前身份创建且仍有项目权限的对话。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Conversations]
+      operationId: createConversation
+      summary: 选择沙箱并创建对话
+      description: 固定 AgentVersion、模型、引擎、沙箱规格和镜像。创建不启动容器、不预占预算；每条消息按独立 Run 计量。需要 runs:write。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateConversation' }
+      responses:
+        '201':
+          description: 对话已创建。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /conversations/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Conversations]
+      operationId: getConversation
+      summary: 对话及按轮排序的运行记录
+      description: 仅创建者可读，需要 runs:read。最多 100 轮。消息、回复和文件引用持久化，容器在每轮后回收；最近最多 12 个完整轮次、32 KiB 公开消息用于下一轮上下文，文件状态独立恢复。过期记录/工作文件不会静默丢弃，继续发送时明确拒绝。
+      responses:
+        '200':
+          description: 对话详情。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /conversations/{id}/messages:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Conversations]
+      operationId: sendConversationMessage
+      summary: 发送消息并异步执行下一轮
+      description: |
+        支持纯文本与上传文件引用；发送时按对话固定配置重新验证连接、权限和价格，原子更新轮次、预占并入队。
+        同一幂等键返回原 Run；并发新消息只有一条成功。上一轮非终态或结果 unknown 时返回 409 CONVERSATION_BUSY。
+        运行事件通过已有 /runs/{id}/events SSE 读取，reply.delta 为公开 summary 的增量、data.step 标记模型步骤；reply.updated 为执行引擎消息更新。工具、模型与沙箱事件作为可折叠进度，隐藏推理不输出。
+        流中断后已派发的模型结果未知时保留预占，不自动重发。需要 runs:write。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string, minLength: 1, maxLength: 8000 }
+                artifactIds:
+                  type: array
+                  description: 本轮新上传的输入文件 id；旧输入与输出由服务端恢复。最新同名文件覆盖工作区引用，原产物记录不改写。
+                  items: { type: string }
+      responses:
+        '202':
+          description: 本轮运行已受理。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
   /capabilities:
     get:
       tags: [Meta]
@@ -780,7 +890,7 @@ paths:
       tags: [Files]
       operationId: previewArtifact
       summary: 文件预览
-      description: 表格给出列与前若干行，文本与 JSON 给出截断后的文本；图片和二进制只给元数据。需要 `artifacts:read`。
+      description: 表格给出列与前若干行；文本、JSON、HTML 与已识别的源码给出有长度上限的文本，HTML 须在受限环境中预览；图片和二进制只给元数据。需要 `artifacts:read`。
       responses:
         '200':
           description: 预览。
@@ -1373,6 +1483,79 @@ components:
               每个事件形如 `id: <序号>\nevent: <类型>\ndata: <RunEvent JSON>\n\n`；结束时 `event: end` 与 `data: {"status":"…"}`；
               出错时 `event: error`。
   schemas:
+    RunLimitsInput:
+      type: object
+      required: [maxCostMicros]
+      properties:
+        maxCostMicros: { $ref: '#/components/schemas/Money' }
+        currency: { type: string, enum: [CNY, USD] }
+        maxExecutionSeconds: { type: integer, minimum: 1 }
+        maxToolCalls: { type: integer, minimum: 1 }
+    CreateConversation:
+      type: object
+      required: [projectId, agentVersionId, modelConnectionId, model, limits]
+      properties:
+        projectId: { type: string }
+        title: { type: string, maxLength: 80 }
+        agentVersionId: { type: string }
+        modelConnectionId: { type: string }
+        model: { type: string }
+        resourceProfile: { type: string }
+        harness: { type: string, enum: [builtin, pi, opencode, codex, claude-code] }
+        limits: { $ref: '#/components/schemas/RunLimitsInput' }
+    Conversation:
+      type: object
+      required:
+        [
+          id,
+          projectId,
+          title,
+          agentVersionId,
+          modelConnectionId,
+          model,
+          resourceProfile,
+          harness,
+          sandboxImage,
+          limits,
+          latestRunId,
+          turnCount,
+          version,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        title: { type: string }
+        agentVersionId: { type: string }
+        modelConnectionId: { type: string }
+        model: { type: string }
+        resourceProfile: { type: string }
+        harness: { $ref: '#/components/schemas/HarnessRef' }
+        sandboxImage: { type: string }
+        limits: { $ref: '#/components/schemas/RunLimitsInput' }
+        latestRunId: { type: string }
+        turnCount: { type: integer }
+        version: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ConversationDetail:
+      allOf:
+        - $ref: '#/components/schemas/Conversation'
+        - type: object
+          required: [runs]
+          properties:
+            runs:
+              type: array
+              items: { $ref: '#/components/schemas/Run' }
+    ConversationPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Conversation' }
+        nextCursor: { $ref: '#/components/schemas/Cursor' }
     Money:
       type: string
       pattern: '^-?[0-9]+$'
@@ -2253,6 +2436,8 @@ components:
           harness,
         ]
       properties:
+        conversationId: { type: string, description: 所属对话；普通 API Run 无此字段。 }
+        conversationTurn: { type: integer, description: 对话内轮次，始于 1。 }
         id: { type: string, example: run_0123456789abcdef }
         projectId: { type: string }
         status:

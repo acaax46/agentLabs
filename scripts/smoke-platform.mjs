@@ -84,6 +84,43 @@ const modelServer = createServer((request, response) => {
     if (request.method === 'POST' && request.url === '/v1/chat/completions') {
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       modelRequests.push({ text: JSON.stringify(body) });
+      const latest =
+        [...(body.messages ?? [])].reverse().find((message) => message.role === 'user')?.content ??
+        '';
+      if (body.stream && latest.includes('conversation-followup')) {
+        const followup = {
+          ...answer,
+          summary: '已根据上一轮文件生成翻倍汇总。',
+          findings: [],
+          outputs: [{ name: 'doubled.csv', description: '翻倍汇总' }],
+        };
+        const used = (body.messages ?? []).some((message) => message.role === 'tool');
+        const delta = used
+          ? { content: JSON.stringify(followup) }
+          : {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: 'followup_1',
+                  type: 'function',
+                  function: {
+                    name: 'code_execute',
+                    arguments: JSON.stringify({
+                      code: 'import pandas as pd\ndf=pd.read_csv("/work/output/summary.csv")\ndf["amount"] *= 2\ndf.to_csv("/work/output/doubled.csv",index=False)\n',
+                    }),
+                  },
+                },
+              ],
+            };
+        response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        response.write(
+          `data: ${JSON.stringify({ id: 'chat-followup', choices: [{ index: 0, delta }] })}\n\n`,
+        );
+        response.end(
+          `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: used ? 'stop' : 'tool_calls' }] })}\n\ndata: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 900, completion_tokens: 80, total_tokens: 980 } })}\n\ndata: [DONE]\n\n`,
+        );
+        return;
+      }
       const sawToolResult = (body.messages ?? []).some((message) => message.role === 'tool');
       const message = sawToolResult
         ? { role: 'assistant', content: JSON.stringify(answer) }
@@ -98,12 +135,29 @@ const modelServer = createServer((request, response) => {
               },
             ],
           };
-      return reply(200, {
+      const completion = {
         id: 'chatcmpl-smoke',
         model: body.model,
         choices: [{ message, finish_reason: 'stop' }],
         usage: { prompt_tokens: 900, completion_tokens: 80, total_tokens: 980 },
-      });
+      };
+      if (body.stream) {
+        response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        if (message.content) {
+          for (const content of [message.content.slice(0, 35), message.content.slice(35)])
+            response.write(
+              `data: ${JSON.stringify({ id: completion.id, choices: [{ index: 0, delta: { content } }] })}\n\n`,
+            );
+        } else
+          response.write(
+            `data: ${JSON.stringify({ id: completion.id, choices: [{ index: 0, delta: { tool_calls: message.tool_calls.map((call, index) => ({ index, ...call })) } }] })}\n\n`,
+          );
+        response.end(
+          `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: message.content ? 'stop' : 'tool_calls' }] })}\n\ndata: ${JSON.stringify({ choices: [], usage: completion.usage })}\n\ndata: [DONE]\n\n`,
+        );
+        return;
+      }
+      return reply(200, completion);
     }
     return reply(404, {});
   });
@@ -404,6 +458,78 @@ async function scenario(server, log) {
   check(
     done.status === 'succeeded' && JSON.stringify(done.result).includes('5050'),
     `a standalone code.execute call runs in the sandbox (${done.status})`,
+  );
+
+  const chat = await ok(platform, 'POST', '/v1/conversations', {
+    ...withKey,
+    body: {
+      projectId: project.id,
+      title: '真实对话验收',
+      agentVersionId: runBody.agentVersionId,
+      modelConnectionId: runBody.modelConnectionId,
+      model: runBody.model,
+      resourceProfile: 'cpu-1-1',
+      harness: 'builtin',
+      limits: runBody.limits,
+    },
+  });
+  const waitTurn = async (body, intent) => {
+    const accepted = await ok(platform, 'POST', `/v1/conversations/${chat.id}/messages`, {
+      ...withKey,
+      body,
+      headers: { 'Idempotency-Key': intent },
+    });
+    const repeated = await ok(platform, 'POST', `/v1/conversations/${chat.id}/messages`, {
+      ...withKey,
+      body,
+      headers: { 'Idempotency-Key': intent },
+    });
+    check(accepted.id === repeated.id, 'a chat retry reuses the original turn');
+    return waitFor('the conversation turn', async () => {
+      const current = await ok(platform, 'GET', `/v1/runs/${accepted.id}`, withKey);
+      return ['succeeded', 'failed', 'unknown'].includes(current.status) ? current : null;
+    });
+  };
+  const first = await waitTurn(
+    { content: 'conversation-first: 汇总订单并生成图表', artifactIds: [ticket.id] },
+    'chat-first-intent-01',
+  );
+  check(first.status === 'succeeded', `the first conversation turn succeeds (${first.status})`);
+  const firstEvents = await ok(platform, 'GET', `/v1/runs/${first.id}/events?limit=200`, withKey);
+  check(
+    firstEvents.items.some((event) => event.type === 'reply.delta'),
+    'the conversation exposes public reply deltas',
+  );
+  const second = await waitTurn(
+    { content: 'conversation-followup: 读取上一轮汇总，把金额翻倍', artifactIds: [] },
+    'chat-second-intent-01',
+  );
+  check(
+    second.status === 'succeeded',
+    `a text-only follow-up restores the prior file (${second.status})`,
+  );
+  const generated = (
+    await ok(platform, 'GET', `/v1/artifacts?runId=${second.id}&kind=output`, withKey)
+  ).items;
+  const doubled = generated.find((file) => file.name === 'doubled.csv');
+  check(!!doubled, 'the follow-up generated a new artifact');
+  if (doubled) {
+    const preview = await ok(platform, 'GET', `/v1/artifacts/${doubled.id}/preview`, withKey);
+    check(
+      preview.rows.some((row) => row[0] === 'east' && Number(row[1]) === 31.5),
+      'the follow-up artifact preview contains the correct doubled values',
+    );
+  }
+  const history = await ok(platform, 'GET', `/v1/conversations/${chat.id}`, withKey);
+  check(
+    history.runs.length === 2 && history.runs[1].conversationTurn === 2,
+    'conversation history is served from durable records',
+  );
+  check(
+    modelRequests.some(
+      ({ text }) => text.includes('conversation-first') && text.includes('conversation-followup'),
+    ),
+    'the model receives prior public conversation messages',
   );
 }
 

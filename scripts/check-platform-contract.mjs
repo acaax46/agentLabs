@@ -39,6 +39,11 @@ const pass = (message) => console.log(`  ok   ${message}`);
 const page = (type) => `Page<${type}>`;
 const list = (type) => `{ items: ${type}[] }`;
 const expectations = {
+  'conversation.created': ['Conversation', 'Conversation'],
+  'conversations.list': ['ConversationPage', page('Conversation')],
+  'conversation.detail': ['ConversationDetail', 'ConversationDetail'],
+  'conversation.message': ['Run', 'Run'],
+  'conversation.run': ['Run', 'Run'],
   'project.created': ['Project', 'Project'],
   'project.created3': ['Project', 'Project'],
   'project.nobudget': ['Project', 'Project'],

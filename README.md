@@ -83,6 +83,8 @@ pnpm db:down
 
 ## 托管 Agent / Tools API
 
+用户侧从工作台“对话”开始：预选 Agent、模型和沙箱后，在聊天框里发消息、上传文件并继续追问。回复与折叠执行进度增量更新，产物卡片可打开预览。消息历史与文件由后端保存，每轮启动并回收容器，不在等待下一条消息时持续占用；每次发送按显示的费用上限预占。普通用户登录默认进入对话，Agent 页面仍提供 API 调试与完整 Run 记录。
+
 后端 MVP 在 `backend/internal/platform`：开发者用 API Key 上传文件、提交 Agent 运行或直接调用工具，订阅事件、取回产物并核对用量与账本。同一组操作有两个入口：`/v1`（API Key，可单独监听用于公网）和 `/api/v1/platform`（工作台会话）。完整契约见 [contracts/platform.openapi.yaml](contracts/platform.openapi.yaml)。
 
 ### 在本机运行

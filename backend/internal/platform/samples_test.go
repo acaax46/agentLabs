@@ -146,6 +146,15 @@ func TestRecordSamples(t *testing.T) {
 	}
 
 	// Run A succeeds.
+	conversation := idOf(post(web, "conversation.created", "POST", "/conversations", map[string]any{"projectId": project, "agentVersionId": fileAgent.LatestVersion.ID, "modelConnectionId": models.Items[0].ConnectionID, "model": models.Items[0].Model, "limits": map[string]any{"maxCostMicros": "2000000", "currency": "CNY"}}, 201))
+	get(web, "conversations.list", "/conversations?projectId="+project)
+	message := idOf(post(web, "conversation.message", "POST", "/conversations/"+conversation+"/messages", map[string]any{"content": "你好，请先问我需要分析什么"}, 202))
+	kit.Push(platform.SayStep(`{"summary":"你希望分析什么？","findings":[],"outputs":[],"warnings":[]}`, 100, 20))
+	kit.Work()
+	get(web, "conversation.detail", "/conversations/"+conversation)
+	get(web, "conversation.run", "/runs/"+message)
+
+	// Run A succeeds.
 	kit.Push(
 		platform.ToolStep(1200, 80, "files_transform", map[string]any{"operation": "merge", "inputs": []string{"orders_oct.csv", "orders_sep.csv"}, "output": "all.csv"}),
 		platform.ToolStep(900, 60, "code_execute", map[string]any{"code": "print('chart')"}),

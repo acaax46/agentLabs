@@ -325,7 +325,18 @@ func (x *execution) initialMessages(ctx context.Context) ([]gateway.Message, err
 	}
 	manifest := fmt.Sprintf("Customer instruction:\n%s\n\nInput files (read-only; use exactly these names):\n%s\n\nLimits for this run: at most %d tool calls and %d seconds in total.",
 		x.run.Instruction, strings.Join(lines, "\n"), x.run.Limits.MaxToolCalls, x.run.Limits.MaxExecutionSeconds)
-	return []gateway.Message{{Role: "system", Content: x.version.SystemPrompt}, {Role: "user", Content: manifest}}, nil
+	prompt := x.version.SystemPrompt
+	if x.run.ConversationID != "" {
+		prompt += "\n\nConversation mode: preserve the published output JSON shape. Put your natural-language reply in summary. You may ask a concise clarifying question and return an empty outputs list when the user has not yet supplied enough information. Continue previous messages and working files; do not claim that a file exists without checking it."
+	}
+	messages := []gateway.Message{{Role: "system", Content: prompt}}
+	for _, message := range x.run.ConversationContext {
+		messages = append(messages, gateway.Message{Role: message.Role, Content: message.Content})
+	}
+	if x.run.ConversationID != "" {
+		manifest += "\n\nThis is a conversation turn. Continue the user's task using the prior messages and restored working files in /work/output. Ask a concise clarification when necessary. Reply in the user's language; keep the published JSON result contract with your natural-language reply in summary. Restored files: " + strings.Join(x.ws.names(), ", ")
+	}
+	return append(messages, gateway.Message{Role: "user", Content: manifest}), nil
 }
 
 // pendingToolCalls finds tool calls the model requested whose results were never journaled, which
@@ -441,6 +452,10 @@ func (x *execution) modelStep(ctx context.Context) (gateway.Response, *runOutcom
 		return gateway.Response{}, outcomeAbandoned()
 	}
 	request := gateway.Request{Model: x.run.Model, Messages: x.transcript, Tools: x.modelTools(), MaxTokens: x.version.Limits.MaxTokensPerStep}
+	var finishReply func(string)
+	if x.run.ConversationID != "" {
+		request.OnText, finishReply = x.replyStream(ctx, x.run.Totals.ModelSteps+1)
+	}
 	x.event(ctx, "info", "gateway", "model.requested", fmt.Sprintf("请求模型 %s（第 %d 步，%s）。", x.run.Model, x.run.Totals.ModelSteps+1, sourceLabel(x.run.ModelSource)), map[string]any{"step": x.run.Totals.ModelSteps + 1, "messages": len(x.transcript)})
 	var response gateway.Response
 	var callErr error
@@ -458,6 +473,9 @@ func (x *execution) modelStep(ctx context.Context) (gateway.Response, *runOutcom
 	}
 	if callErr != nil {
 		return gateway.Response{}, x.modelFailure(ctx, callErr)
+	}
+	if finishReply != nil {
+		finishReply(response.Message.Content)
 	}
 	return x.recordModelStep(ctx, response)
 }

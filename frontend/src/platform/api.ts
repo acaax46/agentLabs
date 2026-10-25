@@ -165,6 +165,8 @@ export type HarnessStatus = HarnessRef & {
   reason?: string;
 };
 export type Run = {
+  conversationId?: string;
+  conversationTurn?: number;
   sandboxImage?: string;
   harness?: HarnessRef;
   resources?: ResourceProfile | null;
@@ -219,7 +221,32 @@ export type RunEvent = {
   source: string;
   type: string;
   message: string;
+  data?: { step?: number; [key: string]: unknown };
 };
+
+export type Conversation = {
+  id: string;
+  projectId: string;
+  title: string;
+  agentVersionId: string;
+  modelConnectionId: string;
+  model: string;
+  resourceProfile: string;
+  sandboxImage: string;
+  harness: HarnessRef;
+  limits: {
+    maxExecutionSeconds: number;
+    maxToolCalls: number;
+    maxCostMicros: string;
+    currency: Currency;
+  };
+  latestRunId: string;
+  turnCount: number;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type ConversationDetail = Conversation & { runs: Run[] };
 export type EventPage = { items: RunEvent[]; cursor: number; terminal: boolean; status: RunStatus };
 export type ToolCall = {
   id: string;

@@ -10,6 +10,7 @@ export default defineConfig({
     '**/pricing.spec.ts',
     '**/completion.spec.ts',
     '**/engines.spec.ts',
+    '**/chat.spec.ts',
   ],
   outputDir: '../.cache/p0-ui-results',
   fullyParallel: true,

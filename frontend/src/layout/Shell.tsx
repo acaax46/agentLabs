@@ -16,6 +16,7 @@ const groupDefinitions: { id: string; label: string; items: Omit<Item, 'badge'>[
     id: 'workspace',
     label: '工作台',
     items: [
+      { href: '/chat', label: '对话', icon: 'agents' },
       { href: '/overview', label: '概览', icon: 'overview' },
       { href: '/projects', label: '项目', icon: 'projects' },
       { href: '/agents', label: 'Agent', icon: 'agents' },

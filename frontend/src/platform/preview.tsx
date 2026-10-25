@@ -62,3 +62,42 @@ export function PngPreview({ id, name }: { id: string; name: string }) {
     </QueryState>
   );
 }
+
+export function HtmlPreview({ text, name }: { text: string; name: string }) {
+  const document = new DOMParser().parseFromString(text, 'text/html');
+  document
+    .querySelectorAll('script,iframe,frame,object,embed,base,meta,link,form')
+    .forEach((node) => node.remove());
+  document.querySelectorAll('*').forEach((node) => {
+    Array.from(node.attributes).forEach((attribute) => {
+      const key = attribute.name.toLowerCase();
+      if (
+        key.startsWith('on') ||
+        [
+          'href',
+          'xlink:href',
+          'action',
+          'formaction',
+          'srcdoc',
+          'srcset',
+          'ping',
+          'target',
+        ].includes(key) ||
+        (['src', 'poster', 'background'].includes(key) &&
+          !attribute.value.startsWith('data:image/'))
+      )
+        node.removeAttribute(attribute.name);
+    });
+  });
+  const policy =
+    "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
+  return (
+    <iframe
+      className="wb-isolated-preview"
+      title={`${name} HTML 预览`}
+      sandbox=""
+      referrerPolicy="no-referrer"
+      srcDoc={`<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${policy}"><meta name="referrer" content="no-referrer">${document.head.innerHTML}</head><body>${document.body.innerHTML}</body></html>`}
+    />
+  );
+}

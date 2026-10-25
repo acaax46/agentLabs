@@ -38,6 +38,7 @@ type RunLimitsInput struct {
 
 // CreateRunInput is the body of POST /v1/runs.
 type CreateRunInput struct {
+	conversation      *conversationTurn
 	ProjectID         string            `json:"projectId"`
 	AgentVersionID    string            `json:"agentVersionId"`
 	ModelConnectionID string            `json:"modelConnectionId"`
@@ -82,6 +83,8 @@ type RunUsageView struct {
 
 // RunView is the public shape of a run.
 type RunView struct {
+	ConversationID    string            `json:"conversationId,omitempty"`
+	ConversationTurn  int               `json:"conversationTurn,omitempty"`
 	ID                string            `json:"id"`
 	ProjectID         string            `json:"projectId"`
 	Status            string            `json:"status"`
@@ -150,6 +153,7 @@ func (s *Service) runView(run Run, detail bool) RunView {
 		blocked = &run.BlockedReason
 	}
 	view := RunView{
+		ConversationID: run.ConversationID, ConversationTurn: run.ConversationTurn,
 		ID: run.ID, ProjectID: run.ProjectID, Status: run.Status, BlockedReason: blocked, CancelRequested: run.CancelRequested,
 		Agent:   AgentRef{ID: run.AgentID, Name: run.AgentName, VersionID: run.AgentVersionID, Version: run.AgentVersion},
 		Trigger: run.Trigger, Actor: ActorRef{Kind: run.ActorKind, ID: run.ActorID, Name: run.ActorName},
@@ -236,7 +240,7 @@ func (s *Service) normalizeRun(project Project, in CreateRunInput) (CreateRunInp
 		}
 		seen[id] = true
 	}
-	if len(in.Input.ArtifactIDs) == 0 {
+	if len(in.Input.ArtifactIDs) == 0 && in.conversation == nil {
 		fields["input.artifactIds"] = "至少需要一个已上传的文件"
 	}
 	if in.Limits.Currency == "" {
@@ -346,6 +350,14 @@ func (s *Service) inputArtifacts(ctx context.Context, project Project, formats [
 // CreateRun validates, prices, reserves budget and queues a run in one transaction. Retrying with
 // the same Idempotency-Key returns the original run and never queues a second one.
 func (s *Service) CreateRun(ctx context.Context, actor Actor, in CreateRunInput, idempotencyKey string) (RunView, error) {
+	return s.createRun(ctx, actor, in, idempotencyKey, "")
+}
+
+func (s *Service) createConversationRun(ctx context.Context, actor Actor, in CreateRunInput, key, digest string) (RunView, error) {
+	return s.createRun(ctx, actor, in, key, digest)
+}
+
+func (s *Service) createRun(ctx context.Context, actor Actor, in CreateRunInput, idempotencyKey, intentDigest string) (RunView, error) {
 	granted, err := s.authorize(ctx, actor, in.ProjectID, ScopeRunsWrite, false)
 	if err != nil {
 		return RunView{}, err
@@ -362,6 +374,9 @@ func (s *Service) CreateRun(ctx context.Context, actor Actor, in CreateRunInput,
 		return RunView{}, err
 	}
 	receipt, digest := receiptID(actor.TenantID, project.ID, actor, "run.create", idempotencyKey), digestOf(request)
+	if intentDigest != "" {
+		digest = intentDigest
+	}
 	previous, err := s.findReceipt(ctx, receipt, digest)
 	if err != nil {
 		return RunView{}, err
@@ -409,7 +424,11 @@ func (s *Service) CreateRun(ctx context.Context, actor Actor, in CreateRunInput,
 		}
 		harnessID, harnessVersion = harness.ID, harness.Version
 	}
-	inputs, err := s.inputArtifacts(ctx, project, version.InputFormats, version.Limits.MaxInputFiles, min(version.Limits.MaxInputBytes, s.cfg.MaxRunInputBytes), request.Input.ArtifactIDs)
+	maxInputBytes := min(version.Limits.MaxInputBytes, s.cfg.MaxRunInputBytes)
+	if request.conversation != nil {
+		maxInputBytes = min(maxInputBytes, sandbox.MaxOutputBytes)
+	}
+	inputs, err := s.inputArtifacts(ctx, project, version.InputFormats, version.Limits.MaxInputFiles, maxInputBytes, request.Input.ArtifactIDs)
 	if err != nil {
 		return RunView{}, err
 	}
@@ -442,6 +461,13 @@ func (s *Service) CreateRun(ctx context.Context, actor Actor, in CreateRunInput,
 		SandboxImage: image,
 		MaxAttempts:  s.cfg.MaxRunAttempts, AvailableAt: now, EventSeq: 1, Billing: BillingPending,
 		CreatedAt: now, UpdatedAt: now, ExpiresAt: now.AddDate(0, 0, project.RetentionDays), Version: 1,
+	}
+	if turn := request.conversation; turn != nil {
+		run.ConversationID, run.ConversationTurn = turn.Conversation.ID, turn.Conversation.TurnCount+1
+		run.PreviousRunID, run.ConversationVersion = turn.Conversation.LatestRunID, turn.Conversation.Version
+		run.ConversationContext, run.WorkspaceArtifactIDs = turn.Context, turn.ArtifactIDs
+		run.SandboxImage = turn.Conversation.SandboxImage
+		run.HarnessVersion = turn.Conversation.Harness.Version
 	}
 	created, err := s.enqueueRun(ctx, actor, receipt, digest, run,
 		fmt.Sprintf("运行已接受：冻结 %s %s，预占 %s。", run.AgentName, run.AgentVersion, money.Format(limits.Currency, limits.MaxCostMicros)),
@@ -553,6 +579,11 @@ func (s *Service) enqueueRun(ctx context.Context, actor Actor, receipt, digest s
 			return e
 		} else if existing != nil {
 			return s.col(colRuns).FindOne(tx, bson.M{"_id": existing.ResourceID, "tenantId": actor.TenantID}).Decode(&created)
+		}
+		if run.ConversationID != "" {
+			if e := s.advanceConversation(tx, run); e != nil {
+				return e
+			}
 		}
 		if e := s.reserve(tx, run.AccountIDs, run.Reserved); e != nil {
 			return e

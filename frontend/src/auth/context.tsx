@@ -9,7 +9,7 @@ export const roleLabels: Record<Role, string> = {
   admin: '管理员',
 };
 export const roleHomes: Record<Role, string> = {
-  user: '/overview',
+  user: '/chat',
   admin: '/overview',
 };
 export const roleAreas: Record<Role, string> = {

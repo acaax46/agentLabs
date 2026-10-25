@@ -149,9 +149,11 @@ type ToolFunction struct {
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
-// Request is one completion. Streaming is deliberately not offered: a single response carries
-// the final usage that billing needs.
+// Request is one completion. Conversations may receive text deltas; the completed result still
+// carries provider-reported usage and failures after dispatch remain unknown.
 type Request struct {
+	// OnText receives only public assistant text, never reasoning tokens or tool arguments.
+	OnText      func(string)
 	Model       string
 	Messages    []Message
 	Tools       []Tool
@@ -210,13 +212,14 @@ func codeOf(value any) string {
 }
 
 type wireRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Tools       []Tool    `json:"tools,omitempty"`
-	ToolChoice  string    `json:"tool_choice,omitempty"`
-	MaxTokens   int       `json:"max_tokens"`
-	Temperature *float64  `json:"temperature,omitempty"`
-	Stream      bool      `json:"stream"`
+	Model         string          `json:"model"`
+	Messages      []Message       `json:"messages"`
+	Tools         []Tool          `json:"tools,omitempty"`
+	ToolChoice    string          `json:"tool_choice,omitempty"`
+	MaxTokens     int             `json:"max_tokens"`
+	Temperature   *float64        `json:"temperature,omitempty"`
+	Stream        bool            `json:"stream"`
+	StreamOptions map[string]bool `json:"stream_options,omitempty"`
 }
 
 type wireResponse struct {
@@ -260,6 +263,10 @@ func (c *Client) Chat(ctx context.Context, request Request) (Response, error) {
 		return Response{}, notSent("max tokens is out of range")
 	}
 	wire := wireRequest{Model: request.Model, Messages: request.Messages, Tools: request.Tools, MaxTokens: request.MaxTokens, Temperature: request.Temperature}
+	if request.OnText != nil {
+		wire.Stream = true
+		wire.StreamOptions = map[string]bool{"include_usage": true}
+	}
 	if len(request.Tools) > 0 {
 		wire.ToolChoice = "auto"
 	}
@@ -277,6 +284,9 @@ func (c *Client) Chat(ctx context.Context, request Request) (Response, error) {
 	httpRequest.Header.Set("Authorization", "Bearer "+c.APIKey)
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("Accept", "application/json")
+	if request.OnText != nil {
+		httpRequest.Header.Set("Accept", "text/event-stream")
+	}
 	httpRequest.Header.Set("User-Agent", "AgentLab-Gateway/1")
 	// WroteRequest is the only reliable evidence that the provider may have seen the request.
 	var written atomic.Bool
@@ -298,6 +308,9 @@ func (c *Client) Chat(ctx context.Context, request Request) (Response, error) {
 		return Response{}, &Error{Kind: Unknown, Message: "the model endpoint did not answer after the request was sent"}
 	}
 	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode >= 200 && response.StatusCode < 300 && strings.Contains(response.Header.Get("Content-Type"), "text/event-stream") {
+		return readCompletionStream(response.Body, request.OnText, started)
+	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, MaxResponseBytes+1))
 	if err != nil || len(raw) > MaxResponseBytes {
 		return Response{}, &Error{Kind: Unknown, Status: response.StatusCode, Message: "the model response could not be read completely"}

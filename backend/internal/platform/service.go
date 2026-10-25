@@ -49,6 +49,7 @@ const (
 	colUsage            = "platform_usage"
 	colUsageResolutions = "platform_usage_resolutions"
 	colRuns             = "platform_runs"
+	colConversations    = "platform_conversations"
 	colEvents           = "platform_run_events"
 	colJournal          = "platform_run_journal"
 	colToolCalls        = "platform_tool_calls"
@@ -242,12 +243,16 @@ func (s *Service) ensureIndexes(ctx context.Context) error {
 			{Keys: ordered("tenantId", 1, "projectId", 1, "keyId", 1, "at", -1), Options: options.Index().SetName("usage_key")},
 		}},
 		{colRuns, []mongo.IndexModel{
+			{Keys: ordered("tenantId", 1, "projectId", 1, "conversationId", 1, "conversationTurn", 1), Options: options.Index().SetName("run_conversation")},
 			{Keys: ordered("status", 1, "availableAt", 1, "createdAt", 1), Options: options.Index().SetName("run_queue")},
 			{Keys: ordered("status", 1, "leaseUntil", 1), Options: options.Index().SetName("run_lease")},
 			{Keys: ordered("tenantId", 1, "projectId", 1, "createdAt", -1, "_id", -1), Options: options.Index().SetName("run_list")},
 			{Keys: ordered("tenantId", 1, "projectId", 1, "status", 1, "createdAt", -1, "_id", -1), Options: options.Index().SetName("run_status")},
 			{Keys: ordered("tenantId", 1, "actorId", 1, "createdAt", -1), Options: options.Index().SetName("run_actor")},
 			{Keys: ordered("expiresAt", 1), Options: options.Index().SetExpireAfterSeconds(0).SetName("run_retention")},
+		}},
+		{colConversations, []mongo.IndexModel{
+			{Keys: ordered("tenantId", 1, "projectId", 1, "createdBy", 1, "createdAt", -1, "_id", -1), Options: options.Index().SetName("conversation_list")},
 		}},
 		{colEvents, []mongo.IndexModel{
 			{Keys: ordered("runId", 1, "seq", 1), Options: options.Index().SetUnique(true).SetName("event_order")},

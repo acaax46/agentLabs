@@ -72,10 +72,16 @@ export function AgentsPage() {
                         <td>{agent.latestVersion?.inputFormats.join(' / ')}</td>
                         <td>
                           <Link
+                            className="wb-button wb-button--primary"
+                            to={`/chat?agent=${agent.id}`}
+                          >
+                            开始对话
+                          </Link>{' '}
+                          <Link
                             className="wb-button wb-button--secondary"
                             to={`/agents/${agent.id}`}
                           >
-                            Playground
+                            API 调试
                           </Link>
                         </td>
                       </tr>

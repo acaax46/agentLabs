@@ -90,6 +90,8 @@ func TestHotQueriesAreServedFromIndexesInOrder(t *testing.T) {
 		{"a project's runs, newest first", "run_list", colRuns, bson.M{"tenantId": testTenant, "projectId": "prj_x"}, newestFirst, 101},
 		{"a project's runs in one status", "run_status", colRuns, bson.M{"tenantId": testTenant, "projectId": "prj_x", "status": RunSucceeded}, newestFirst, 101},
 		{"a person's runs", "run_actor", colRuns, bson.M{"tenantId": testTenant, "actorId": "user_alice"}, ordered("createdAt", -1), 101},
+		{"conversation turns", "run_conversation", colRuns, bson.M{"tenantId": testTenant, "projectId": "prj_x", "conversationId": "chat_x"}, ordered("conversationTurn", 1), 100},
+		{"conversation history", "conversation_list", colConversations, bson.M{"tenantId": testTenant, "projectId": "prj_x", "createdBy": "user:user_alice"}, newestFirst, 25},
 		{"usage lines of a project", "usage_list", colUsage, bson.M{"tenantId": testTenant, "projectId": "prj_x"}, byTime, 101},
 		{"usage lines of one run", "usage_run", colUsage, bson.M{"tenantId": testTenant, "projectId": "prj_x", "runId": "run_x"}, byTime, 101},
 		{"usage lines of one key", "usage_key", colUsage, bson.M{"tenantId": testTenant, "projectId": "prj_x", "keyId": "key_x", "at": bson.M{"$gte": now}}, nil, 0},

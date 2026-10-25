@@ -40,7 +40,7 @@ export function AuthPages({ registration = false }: { registration?: boolean }) 
       if (registration) await auth.signUp({ username, displayName: name, email, password });
       else await auth.signIn(username, password);
     },
-    onSuccess: () => navigate('/overview', { replace: true }),
+    onSuccess: () => navigate('/', { replace: true }),
   });
 
   if (auth.pending) {
@@ -51,7 +51,7 @@ export function AuthPages({ registration = false }: { registration?: boolean }) 
       </main>
     );
   }
-  if (auth.user) return <Navigate to="/overview" replace />;
+  if (auth.user) return <Navigate to={roleHomes[auth.user.role]} replace />;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();

@@ -7,12 +7,35 @@ import { usePlatform } from '../state';
 import { formatBytes, formatDateTime } from '../model';
 import { MutationError, QueryState, RequireProject, usePage } from '../shared';
 import { Pagination } from '../controls';
-import { IsolatedPreview, PngPreview } from '../preview';
+import { HtmlPreview, IsolatedPreview, PngPreview } from '../preview';
 import { CodeBlock, EmptyState, Modal, PageHeader, StatusBadge } from '../ui';
 import { BatchDownload, DataChart, ExcelPreview } from '../ArtifactEnhancements';
 
-function ArtifactPreview({ artifact }: { artifact: Artifact }) {
-  const textSupported = ['csv', 'tsv', 'json', 'txt', 'md'].includes(artifact.type);
+export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
+  const textSupported = [
+    'csv',
+    'tsv',
+    'json',
+    'txt',
+    'md',
+    'html',
+    'py',
+    'js',
+    'mjs',
+    'cjs',
+    'ts',
+    'tsx',
+    'jsx',
+    'go',
+    'java',
+    'rs',
+    'css',
+    'yaml',
+    'yml',
+    'toml',
+    'sql',
+    'sh',
+  ].includes(artifact.type);
   const preview = useQuery({
     queryKey: ['platform', 'preview', artifact.id],
     queryFn: ({ signal }) =>
@@ -76,6 +99,8 @@ function ArtifactPreview({ artifact }: { artifact: Artifact }) {
                       </tbody>
                     </table>
                   </div>
+                ) : artifact.type === 'html' ? (
+                  <HtmlPreview text={preview.data.text ?? ''} name={artifact.name} />
                 ) : artifact.type === 'md' ? (
                   <IsolatedPreview
                     text={preview.data.text}

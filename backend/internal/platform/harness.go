@@ -363,18 +363,27 @@ func (d *session) Event(_ context.Context, event sandbox.SessionEvent) {
 		message = fmt.Sprintf("%s 报告调用 %s：%s", d.harness.Name, event.Name, event.Summary)
 	}
 	d.x.event(d.base, "info", "harness", "harness."+event.Kind, cutBytes(message, 400), map[string]any{"reported": true, "tool": event.Name})
+	if d.x.run.ConversationID != "" && event.Kind == "message" {
+		if reply := publicReplyPrefix(event.Summary); reply != "" {
+			d.x.event(d.base, "info", "assistant", "reply.updated", reply, map[string]any{"step": d.x.run.Totals.ModelSteps})
+		}
+	}
 }
 
 // sessionInstruction is the CLI's first message: the customer's instruction and the inputs.
 func (x *execution) sessionInstruction(ctx context.Context) string {
 	var lines []string
+	var history strings.Builder
+	for _, message := range x.run.ConversationContext {
+		history.WriteString(message.Role + ":\n" + message.Content + "\n\n")
+	}
 	for _, name := range x.ws.names() {
 		if artifact, _ := x.ws.get(name); artifact.Kind == ArtifactInput {
 			lines = append(lines, x.describeInput(ctx, artifact))
 		}
 	}
-	return fmt.Sprintf("Customer instruction:\n%s\n\nInput files (read-only, under /work/input):\n%s\n\nYour working directory is /work/output. Limits for this run: at most %d model requests and %d seconds in total.",
-		x.run.Instruction, strings.Join(lines, "\n"), x.run.Limits.MaxModelSteps, x.run.Limits.MaxExecutionSeconds)
+	return fmt.Sprintf("Previous conversation:\n%s\nCustomer instruction:\n%s\n\nInput files (read-only, under /work/input):\n%s\n\nRestored working files: %s. Continue the conversation in the user's language; your natural-language reply goes in summary. Your working directory is /work/output. Limits for this run: at most %d model requests and %d seconds in total.",
+		history.String(), x.run.Instruction, strings.Join(lines, "\n"), strings.Join(x.ws.names(), ", "), x.run.Limits.MaxModelSteps, x.run.Limits.MaxExecutionSeconds)
 }
 
 // driveSession runs a code-agent run: one session, its outputs, and an honest outcome.
@@ -413,6 +422,9 @@ func (x *execution) driveSession(ctx context.Context) runOutcome {
 		Resources: x.run.Resources.sandboxResources(), ImageID: x.run.SandboxImage,
 	}
 	sessionID := ids.New(ids.ToolCall)
+	if x.run.ConversationID != "" {
+		request.SystemPrompt += "\nConversation mode: you may ask concise clarifying questions. Put the natural-language reply in summary and return an empty outputs list if no files were created. Continue from the previous public messages and restored working files."
+	}
 	if err = x.setInflight(ctx, inflightTool, sessionID); err != nil {
 		return *outcomeAbandoned()
 	}

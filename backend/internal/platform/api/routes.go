@@ -48,6 +48,10 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /download/{token}", s.download)
 
 	mux.HandleFunc("POST /runs", s.authed(s.createRun))
+	mux.HandleFunc("GET /conversations", s.authed(s.listConversations))
+	mux.HandleFunc("POST /conversations", s.authed(s.createConversation))
+	mux.HandleFunc("GET /conversations/{id}", s.authed(s.getConversation))
+	mux.HandleFunc("POST /conversations/{id}/messages", s.authed(s.sendMessage))
 	mux.HandleFunc("GET /runs", s.authed(s.listRuns))
 	mux.HandleFunc("GET /runs/{id}", s.authed(s.getRun))
 	mux.HandleFunc("GET /runs/{id}/events", s.authed(s.runEvents))

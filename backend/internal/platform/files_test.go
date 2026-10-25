@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -281,5 +282,50 @@ func TestResultFilesSupersedeEachOtherButNeverTheInputs(t *testing.T) {
 	h.must(err)
 	if artifact, _ := rebuilt.get("report.csv"); artifact.ID != second.ID {
 		t.Fatalf("a rebuilt workspace saw %s, want %s", artifact.ID, second.ID)
+	}
+}
+
+func TestSourceAndHTMLArtifactsHaveBoundedTextPreviews(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.publishPrices()
+	project := h.project(10_000_000)
+	run := h.run(h.submit(h.runInput(project.ID, h.upload(h.alice, project.ID, "orders.csv", ordersOct))).ID)
+	var stored Project
+	h.must(h.db.Collection(colProjects).FindOne(ctx, bson.M{"_id": project.ID}).Decode(&stored))
+	w, err := h.svc.openWorkspace(ctx, run, stored)
+	h.must(err)
+	for name, body := range map[string]string{
+		"analysis.PY": "print('中文')\n",
+		"App.tsx":     "export default () => <h1>产物</h1>;\n",
+		"config.yaml": "title: 中文\n",
+		"report.html": "<h1>报告</h1><script>parent.alert('untrusted')</script>",
+	} {
+		t.Run(name, func(t *testing.T) {
+			artifact, err := w.write(ctx, name, []byte(body), "call_preview", "")
+			h.must(err)
+			preview, err := h.svc.PreviewArtifact(ctx, h.alice, artifact.ID)
+			h.must(err)
+			if artifact.Type == "bin" || preview.Type != "text" || preview.Text != body || preview.Truncated {
+				t.Fatalf("source or HTML could not be previewed: %+v", preview)
+			}
+			if _, err := h.svc.PreviewArtifact(ctx, h.bob, artifact.ID); h.code(err) != "NOT_FOUND" {
+				t.Fatalf("a stranger previewed an output: %v", err)
+			}
+		})
+	}
+	long, err := w.write(ctx, "large.py", []byte(strings.Repeat("测", previewBytes)), "call_preview", "")
+	h.must(err)
+	preview, err := h.svc.PreviewArtifact(ctx, h.alice, long.ID)
+	h.must(err)
+	if !preview.Truncated || len(preview.Text) > previewBytes || !utf8.ValidString(preview.Text) || strings.ContainsRune(preview.Text, utf8.RuneError) {
+		t.Fatalf("unbounded or corrupt source preview: %d bytes, truncated=%v", len(preview.Text), preview.Truncated)
+	}
+	binary, err := w.write(ctx, "result.bin", []byte{0, 255, 1}, "call_preview", "")
+	h.must(err)
+	preview, err = h.svc.PreviewArtifact(ctx, h.alice, binary.ID)
+	h.must(err)
+	if preview.Type != "binary" || preview.Text != "" {
+		t.Fatalf("a binary artifact was treated as text: %+v", preview)
 	}
 }

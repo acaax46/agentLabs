@@ -61,6 +61,7 @@ func (s *Service) Readiness(ctx context.Context) Status {
 	defer cancel()
 	status := Status{Capabilities: Capabilities{MaxUploadBytes: s.cfg.MaxUploadBytes, MaxRunInputBytes: s.cfg.MaxRunInputBytes, WorkerConcurrency: s.cfg.WorkerConcurrency}}
 	status.Capabilities.Modules = map[string]bool{"projects": true, "agents": true, "tools": true, "runs": true, "connections": true, "keys": true, "usage": true, "artifacts": true}
+	status.Capabilities.Modules["chat"] = true
 	record := func(name string, err error) bool {
 		check := Check{Name: name, OK: err == nil}
 		if err != nil {

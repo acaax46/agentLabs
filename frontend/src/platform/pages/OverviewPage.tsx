@@ -26,8 +26,8 @@ export function OverviewPage() {
         title="工作台概览"
         description="查看当前项目的运行、预算和需要核对的事项。"
         actions={
-          <Link className="wb-button wb-button--primary" to="/agents">
-            打开 Playground
+          <Link className="wb-button wb-button--primary" to="/chat">
+            开始对话
           </Link>
         }
       />

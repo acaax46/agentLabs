@@ -7,6 +7,7 @@ import { MutationError } from './shared';
 import { Icon, Modal } from './ui';
 
 const destinations = [
+  ['/chat', '对话'],
   ['/overview', '概览'],
   ['/projects', '项目'],
   ['/agents', 'Agent'],

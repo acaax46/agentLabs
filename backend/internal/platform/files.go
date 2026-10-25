@@ -56,6 +56,22 @@ var classes = map[string]fileClass{
 	".zip":  {"zip", "application/zip", false, false},
 	".pdf":  {"pdf", "application/pdf", false, false},
 	".html": {"html", "text/html", true, false},
+	".py":   {"py", "text/plain", true, false},
+	".js":   {"js", "text/plain", true, false},
+	".mjs":  {"mjs", "text/plain", true, false},
+	".cjs":  {"cjs", "text/plain", true, false},
+	".ts":   {"ts", "text/plain", true, false},
+	".tsx":  {"tsx", "text/plain", true, false},
+	".jsx":  {"jsx", "text/plain", true, false},
+	".go":   {"go", "text/plain", true, false},
+	".java": {"java", "text/plain", true, false},
+	".rs":   {"rs", "text/plain", true, false},
+	".css":  {"css", "text/plain", true, false},
+	".yaml": {"yaml", "text/plain", true, false},
+	".yml":  {"yml", "text/plain", true, false},
+	".toml": {"toml", "text/plain", true, false},
+	".sql":  {"sql", "text/plain", true, false},
+	".sh":   {"sh", "text/plain", true, false},
 }
 
 func classify(name string) fileClass {
@@ -469,7 +485,7 @@ func (s *Service) PreviewArtifact(ctx context.Context, actor Actor, id string) (
 		preview.Type = "image"
 		return preview, nil
 	}
-	if !classify(artifact.Name).Text || artifact.Type == "html" {
+	if !classify(artifact.Name).Text {
 		return preview, nil
 	}
 	data, err := io.ReadAll(io.LimitReader(content.Object, sniffBytes))
@@ -630,6 +646,22 @@ type workspace struct {
 
 func (s *Service) openWorkspace(ctx context.Context, run Run, project Project) (*workspace, error) {
 	w := &workspace{svc: s, run: run, project: project, files: map[string]Artifact{}}
+	if len(run.WorkspaceArtifactIDs) > 0 {
+		found, err := s.col(colArtifacts).Find(ctx, bson.M{"tenantId": run.TenantID, "projectId": run.ProjectID, "_id": bson.M{"$in": run.WorkspaceArtifactIDs}, "status": ArtifactReady, "expiresAt": bson.M{"$gt": s.now()}})
+		if err != nil {
+			return nil, err
+		}
+		var files []Artifact
+		if err = found.All(ctx, &files); err != nil {
+			return nil, err
+		}
+		if len(files) != len(run.WorkspaceArtifactIDs) {
+			return nil, fmt.Errorf("conversation workspace file expired")
+		}
+		for _, file := range files {
+			w.files[file.Name] = file
+		}
+	}
 	if len(run.InputArtifactIDs) > 0 {
 		found, err := s.col(colArtifacts).Find(ctx, bson.M{"tenantId": run.TenantID, "projectId": run.ProjectID, "_id": bson.M{"$in": run.InputArtifactIDs}})
 		if err != nil {

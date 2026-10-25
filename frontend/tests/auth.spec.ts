@@ -19,7 +19,7 @@ test('current workbench authenticates both roles and clears the session on logou
     ['student', 'AgentLab-Student-2026!', '成员'],
   ]) {
     await signIn(page, username!, password!);
-    await expect(page).toHaveURL(/#\/overview$/);
+    await expect(page).toHaveURL(username === 'admin' ? /#\/overview$/ : /#\/chat$/);
     await page.goto('/#/settings');
     await expect(page.getByRole('definition').filter({ hasText: role! }).first()).toBeVisible();
     const state = await (await page.request.get('/api/v1/auth/me')).json();
@@ -52,7 +52,7 @@ test('registration rejects elevated roles and changing password revokes existing
   await page.getByLabel('姓名或昵称').fill('注册验收用户');
   await page.getByLabel('密码', { exact: true }).fill('Register-2026!');
   await page.getByRole('button', { name: '注册并进入工作台', exact: true }).click();
-  await expect(page).toHaveURL(/#\/overview$/);
+  await expect(page).toHaveURL(/#\/chat$/);
   const state = await (await page.request.get('/api/v1/auth/me')).json();
   expect(state.user.role).toBe('user');
   expect(state.permissions.manageUsers).toBe(false);
@@ -75,7 +75,7 @@ test('registration rejects elevated roles and changing password revokes existing
   await expect(page.getByRole('alert')).toContainText('用户名或密码不正确');
   await page.getByLabel('密码', { exact: true }).fill('Changed-2026!');
   await page.getByRole('button', { name: '登录工作台' }).click();
-  await expect(page).toHaveURL(/#\/overview$/);
+  await expect(page).toHaveURL(/#\/chat$/);
 });
 
 test('mobile drawer traps keyboard focus, closes with Escape and has no visible scrollbar', async ({

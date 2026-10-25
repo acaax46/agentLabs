@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthPages } from './auth/pages';
-import { useAuth } from './auth/context';
+import { roleHomes, useAuth } from './auth/context';
 import { Shell } from './layout/Shell';
 import { OverviewPage } from './platform/pages/OverviewPage';
 import { ProjectDetailPage, ProjectsPage } from './platform/pages/ProjectsPage';
@@ -15,6 +15,7 @@ import { KeysPage } from './platform/pages/KeysPage';
 import { UsagePage } from './platform/pages/UsagePage';
 import { ArtifactsPage } from './platform/pages/ArtifactsPage';
 import { SettingsPage } from './platform/pages/SettingsPage';
+import { ChatPage } from './platform/pages/ChatPage';
 
 export function App() {
   const auth = useAuth();
@@ -41,10 +42,12 @@ export function App() {
   return (
     <Shell>
       <Routes>
-        <Route path="/" element={<Navigate to="/overview" replace />} />
-        <Route path="/login" element={<Navigate to="/overview" replace />} />
-        <Route path="/register" element={<Navigate to="/overview" replace />} />
+        <Route path="/" element={<Navigate to={roleHomes[auth.user.role]} replace />} />
+        <Route path="/login" element={<Navigate to={roleHomes[auth.user.role]} replace />} />
+        <Route path="/register" element={<Navigate to={roleHomes[auth.user.role]} replace />} />
         <Route path="/overview" element={<OverviewPage />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat/:id" element={<ChatPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/projects/:id" element={<ProjectDetailPage />} />
         <Route path="/agents" element={<AgentsPage />} />
