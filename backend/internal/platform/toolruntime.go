@@ -1,11 +1,14 @@
 package platform
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 	"time"
 
@@ -143,6 +146,8 @@ func (x *execution) runTool(ctx context.Context, call gateway.ToolCall) (string,
 		out = x.execCode(ctx, record.ID, call.Function.Arguments)
 	case toolFilesTransform:
 		out = x.execFiles(ctx, record.ID, call.Function.Arguments)
+	case toolFilesBundle:
+		out = x.execBundle(ctx, record.ID, call.Function.Arguments)
 	default:
 		out = failedTool("TOOL_UNIMPLEMENTED", "this tool is not available on this deployment")
 	}
@@ -274,7 +279,7 @@ func (x *execution) execCode(ctx context.Context, callID, raw string) toolOutput
 		resources = sandbox.Resources{CPUs: 1, MemoryMB: 1024}
 	}
 	if profile := x.run.Resources; profile != nil {
-		resources = sandbox.Resources{CPUs: float64(profile.CPU), MemoryMB: profile.MemoryMB, GPU: profile.GPU}
+		resources = profile.sandboxResources()
 		// Bound the next sandbox charge before dispatch, leaving the reservation unchanged.
 		rate, e := money.Add(x.run.SandboxPerSecond, x.run.ExecutionPerSecond)
 		if e != nil {
@@ -293,6 +298,10 @@ func (x *execution) execCode(ctx context.Context, callID, raw string) toolOutput
 	defer cancel()
 	result, err := x.s.runner.Execute(stoppable, sandbox.Request{RunID: x.run.ID, Code: args.Code, TimeoutSeconds: timeout, Inputs: inputs, Outputs: outputs, Resources: resources, ImageID: x.run.SandboxImage})
 	if err != nil {
+		// Nothing started, so nothing is owed: a busy or missing card is an ordinary tool failure.
+		if errors.Is(err, sandbox.ErrNoCapacity) {
+			return failedTool("SANDBOX_BUSY", "no device of the selected type was free in time, so nothing ran and nothing was billed; try again or finish with what you have")
+		}
 		if x.run.Resources != nil {
 			out := sandboxFailure(err)
 			out.Unknown = true
@@ -389,6 +398,109 @@ func (x *execution) execFiles(ctx context.Context, callID, raw string) toolOutpu
 		"stats":  result.Stats,
 	})
 	return toolOutput{Content: string(content), Summary: summary, Quantity: int64(len(spec.Inputs)), Artifacts: []string{artifact.ID}, Sandbox: "native"}
+}
+
+type bundleEntry struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"sizeBytes"`
+	SHA256    string `json:"sha256"`
+}
+
+func validArchivePath(name string) bool {
+	return name != "" && len(name) <= 200 && !strings.HasPrefix(name, "/") && !strings.ContainsAny(name, "\\:\x00\r\n") && path.Clean(name) == name && name != "." && name != ".." && !strings.HasPrefix(name, "../")
+}
+
+// execBundle creates a deterministic ZIP from files already in the run workspace. It never
+// executes code or deploys remotely; deployment remains the caller's explicit next step.
+func (x *execution) execBundle(ctx context.Context, callID, raw string) toolOutput {
+	var args struct {
+		Inputs          []string          `json:"inputs"`
+		Output          string            `json:"output"`
+		ArchivePaths    map[string]string `json:"archivePaths"`
+		IncludeManifest *bool             `json:"includeManifest"`
+	}
+	if err := decodeArguments(raw, &args); err != nil {
+		return failedTool("TOOL_INVALID", "invalid arguments: "+err.Error())
+	}
+	if len(args.Inputs) < 1 || len(args.Inputs) > 32 {
+		return failedTool("TOOL_INVALID", "inputs must contain 1-32 workspace files")
+	}
+	output, err := sanitizeName(args.Output)
+	if err != nil || output != args.Output || !strings.HasSuffix(strings.ToLower(output), ".zip") {
+		return failedTool("TOOL_INVALID", "output must be a safe .zip file name")
+	}
+	seen := map[string]bool{}
+	entries := make([]bundleEntry, 0, len(args.Inputs))
+	dataByName := make(map[string][]byte, len(args.Inputs))
+	archiveSeen := map[string]bool{}
+	for _, name := range args.Inputs {
+		if seen[name] {
+			return failedTool("TOOL_INVALID", "inputs must not contain duplicates")
+		}
+		seen[name] = true
+		if name == output {
+			return failedTool("TOOL_INVALID", "output must not be one of the inputs")
+		}
+		data, readErr := x.ws.read(ctx, name)
+		if readErr != nil {
+			return failedTool("TOOL_FAILED", readErr.Error())
+		}
+		archivePath := name
+		if mapped, ok := args.ArchivePaths[name]; ok {
+			archivePath = mapped
+		}
+		if !validArchivePath(archivePath) || archivePath == "agentlab-bundle-manifest.json" || archiveSeen[archivePath] {
+			return failedTool("TOOL_INVALID", "archive paths must be safe, unique and must not replace the manifest")
+		}
+		archiveSeen[archivePath] = true
+		dataByName[name] = data
+		entries = append(entries, bundleEntry{Name: name, Path: archivePath, SizeBytes: int64(len(data)), SHA256: sha256Hex(string(data))})
+	}
+	includeManifest := args.IncludeManifest == nil || *args.IncludeManifest
+	var buffer bytes.Buffer
+	zw := zip.NewWriter(&buffer)
+	for _, entry := range entries {
+		header := &zip.FileHeader{Name: entry.Path, Method: zip.Deflate}
+		header.SetModTime(time.Unix(0, 0).UTC())
+		writer, writeErr := zw.CreateHeader(header)
+		if writeErr != nil {
+			return failedTool("TOOL_FAILED", "could not create ZIP entry")
+		}
+		if _, writeErr = writer.Write(dataByName[entry.Name]); writeErr != nil {
+			return failedTool("TOOL_FAILED", "could not write ZIP entry")
+		}
+	}
+	if includeManifest {
+		manifest, marshalErr := json.Marshal(map[string]any{"version": 1, "files": entries})
+		if marshalErr != nil {
+			return failedTool("TOOL_FAILED", "could not create bundle manifest")
+		}
+		header := &zip.FileHeader{Name: "agentlab-bundle-manifest.json", Method: zip.Deflate}
+		header.SetModTime(time.Unix(0, 0).UTC())
+		writer, writeErr := zw.CreateHeader(header)
+		if writeErr != nil {
+			return failedTool("TOOL_FAILED", "could not create bundle manifest")
+		}
+		if _, writeErr = writer.Write(manifest); writeErr != nil {
+			return failedTool("TOOL_FAILED", "could not write bundle manifest")
+		}
+	}
+	if err = zw.Close(); err != nil {
+		return failedTool("TOOL_FAILED", "could not finalize ZIP")
+	}
+	if buffer.Len() > sandbox.MaxOutputBytes {
+		return failedTool("TOOL_OUTPUT_LIMIT", "bundle exceeds the output size limit")
+	}
+	artifact, writeErr := x.ws.write(ctx, output, buffer.Bytes(), callID, fmt.Sprintf("ZIP 包含 %d 个文件", len(entries)))
+	if errors.Is(writeErr, errReadOnly) {
+		return failedTool("TOOL_INVALID", "output must not replace an uploaded input file")
+	}
+	if writeErr != nil {
+		return failedTool("TOOL_FAILED", "the bundle could not be stored")
+	}
+	content, _ := json.Marshal(map[string]any{"output": map[string]any{"name": artifact.Name, "sizeBytes": artifact.Size, "sha256": artifact.SHA256}, "files": entries})
+	return toolOutput{Content: string(content), Summary: fmt.Sprintf("ZIP 已生成，包含 %d 个文件", len(entries)), Quantity: int64(len(entries)), Artifacts: []string{artifact.ID}, Sandbox: "native"}
 }
 
 // interruptedCalls marks tool calls a previous attempt left dispatched, before they are repeated.

@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,7 +14,7 @@ import (
 
 func TestPresetTariffsHaveExactModelRatesAndResourcePrices(t *testing.T) {
 	prices := PresetPrices("openai-compatible")
-	if len(prices) != 22 {
+	if len(prices) != 26 {
 		t.Fatalf("prices = %d", len(prices))
 	}
 	byName := map[string]CreatePriceInput{}
@@ -38,10 +39,17 @@ func TestPresetTariffsHaveExactModelRatesAndResourcePrices(t *testing.T) {
 			t.Fatalf("cached model cost = %s %v, want %s", cost, err, want)
 		}
 	}
-	for id, rate := range map[string]money.Micros{"cpu-1-1": 125, "cpu-2-4": 300, "cpu-4-8": 600, "gpu-l4-8-32": 3600} {
+	for id, rate := range map[string]money.Micros{"cpu-1-1": 125, "cpu-2-4": 300, "cpu-4-8": 600, "gpu-l4-8-32": 3600, "gpu-rtx3070-laptop-4-8": 1200} {
 		if p := byName["sandbox-20261024-CNY-"+id]; p.PerSecondMicros != rate {
 			t.Fatalf("%s = %s", id, p.PerSecondMicros)
 		}
+	}
+	// Each card type has its own rate: 4 vCPU + 8 GiB + one RTX 3070 Laptop, against 8 + 32 + one L4.
+	if p := byName["sandbox-20261024-USD-gpu-rtx3070-laptop-4-8"]; p.PerSecondMicros != 4*20+8*5+120 || !strings.Contains(p.Note, "RTX 3070 Laptop") {
+		t.Fatalf("USD 3070 = %+v", p)
+	}
+	if p := byName["sandbox-20261024-USD-gpu-l4-8-32"]; p.PerSecondMicros != 8*20+32*5+400 {
+		t.Fatalf("USD L4 = %+v", p)
 	}
 }
 
@@ -64,7 +72,7 @@ func TestPresetImportIsConcurrentIdempotentAndPreservesAdminPrices(t *testing.T)
 	for e := range errs {
 		h.must(e)
 	}
-	if n := h.count(colPrices, nil); n != 22 {
+	if n := h.count(colPrices, nil); n != 26 {
 		t.Fatalf("concurrent imports created %d prices", n)
 	}
 	current, err := h.svc.modelPrice(ctx, testTenant, "test", custom.Model, "CNY")

@@ -267,7 +267,7 @@ func TestWorkbenchConnectionGrantsAndCatalogueOverHTTP(t *testing.T) {
 		} `json:"items"`
 	}
 	decodeInto(t, alice.get("/agents"), &agents)
-	if len(agents.Items) != 5 || len(agents.Items[0].LatestVersion.Tools) != 2 || agents.Items[0].LatestVersion.PromptDigest == "" {
+	if len(agents.Items) != platform.BuiltinAgentCount() || len(agents.Items[0].LatestVersion.Tools) != 2 || agents.Items[0].LatestVersion.PromptDigest == "" {
 		t.Fatalf("agents = %+v", agents)
 	}
 	agentID, agentVersionID := "", ""
@@ -324,14 +324,22 @@ func prepareRun(t *testing.T, kit *platform.Kit, alice session) prepared {
 	decodeInto(t, alice.get("/models?projectId="+project.ID), &models)
 	var agents struct {
 		Items []struct {
+			ID            string `json:"id"`
 			LatestVersion struct {
 				ID string `json:"id"`
 			} `json:"latestVersion"`
 		} `json:"items"`
 	}
 	decodeInto(t, alice.get("/agents"), &agents)
+	// The file analysis agent runs under any tariff; GPU and code-agent versions need resource prices.
+	versionID := ""
+	for _, agent := range agents.Items {
+		if agent.ID == "agt_file_analysis" {
+			versionID = agent.LatestVersion.ID
+		}
+	}
 	return prepared{project: project, body: map[string]any{
-		"projectId": project.ID, "agentVersionId": agents.Items[0].LatestVersion.ID, "modelConnectionId": models.Items[0].ConnectionID, "model": models.Items[0].Model,
+		"projectId": project.ID, "agentVersionId": versionID, "modelConnectionId": models.Items[0].ConnectionID, "model": models.Items[0].Model,
 		"input":  map[string]any{"instruction": "合并两份订单", "artifactIds": files},
 		"limits": map[string]any{"maxCostMicros": "2000000", "currency": "CNY", "maxExecutionSeconds": 120, "maxToolCalls": 20},
 	}}

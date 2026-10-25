@@ -43,6 +43,7 @@ type CreateRunInput struct {
 	ModelConnectionID string            `json:"modelConnectionId"`
 	Model             string            `json:"model"`
 	ResourceProfile   string            `json:"resourceProfile,omitempty"`
+	Harness           string            `json:"harness,omitempty"` // one of the version's harnesses; empty takes its default
 	Input             RunInput          `json:"input"`
 	Limits            RunLimitsInput    `json:"limits"`
 	Metadata          map[string]string `json:"metadata"`
@@ -97,6 +98,7 @@ type RunView struct {
 	Resources         *ResourceProfile  `json:"resources"`
 	Prices            RunPrices         `json:"prices"`
 	SandboxImage      string            `json:"sandboxImage,omitempty"`
+	Harness           HarnessRef        `json:"harness"`
 	Metadata          map[string]string `json:"metadata"`
 	CreatedAt         time.Time         `json:"createdAt"`
 	StartedAt         *time.Time        `json:"startedAt"`
@@ -153,7 +155,7 @@ func (s *Service) runView(run Run, detail bool) RunView {
 		Trigger: run.Trigger, Actor: ActorRef{Kind: run.ActorKind, ID: run.ActorID, Name: run.ActorName},
 		InputSummary: collapse(run.Instruction, 200), InputArtifactIDs: run.InputArtifactIDs,
 		Model:  ModelRef{ConnectionID: run.ConnectionID, ConnectionName: run.ConnectionName, Provider: run.Provider, Model: run.Model, Source: run.ModelSource},
-		Limits: run.Limits, Resources: run.Resources, Prices: run.Prices, SandboxImage: run.SandboxImage, Metadata: run.Metadata, CreatedAt: run.CreatedAt, StartedAt: run.StartedAt, FinishedAt: run.FinishedAt,
+		Limits: run.Limits, Resources: run.Resources, Prices: run.Prices, SandboxImage: run.SandboxImage, Harness: run.harnessRef(), Metadata: run.Metadata, CreatedAt: run.CreatedAt, StartedAt: run.StartedAt, FinishedAt: run.FinishedAt,
 		Currency: run.Limits.Currency, ReservedMicros: run.Reserved, OutputArtifactIDs: run.OutputArtifactIDs, Error: run.Error,
 		Usage: RunUsageView{ModelSteps: run.Totals.ModelSteps, ToolCalls: run.Totals.ToolCalls},
 	}
@@ -289,7 +291,7 @@ func effectiveLimits(version AgentVersion, in RunLimitsInput) (RunLimits, error)
 
 // toolUnitFor is the meter an in-run call of a tool is billed with.
 func toolUnitFor(tool string) string {
-	if tool == toolFilesTransform {
+	if tool == toolFilesTransform || tool == toolFilesBundle {
 		return "file"
 	}
 	return "call"
@@ -384,13 +386,28 @@ func (s *Service) CreateRun(ctx context.Context, actor Actor, in CreateRunInput,
 	if err != nil {
 		return RunView{}, err
 	}
-	resources, sandboxRate, err := s.freezeSandbox(ctx, project, request.ResourceProfile, &prices)
+	harness, err := s.freezeHarness(ctx, version, request.Harness)
 	if err != nil {
 		return RunView{}, err
 	}
-	image, err := s.freezeSandboxImage(ctx, version.Tools)
+	resources, sandboxRate, err := s.freezeSandbox(ctx, project, version, request.ResourceProfile, &prices)
 	if err != nil {
 		return RunView{}, err
+	}
+	image, err := s.freezeSandboxImage(ctx, version.Tools, resources)
+	if err != nil {
+		return RunView{}, err
+	}
+	var harnessID, harnessVersion string
+	if harness.ID != HarnessBuiltin {
+		// A session holds its allocation for the whole run, which only a per-second resource price can bill.
+		if resources == nil {
+			return RunView{}, problem("RESOURCE_BILLING_INCLUDED", "代码 Agent 会话按所选规格计沙箱秒，需要管理员先发布资源另列的托管价格。", 409)
+		}
+		if image, err = s.freezeAgentImage(ctx); err != nil {
+			return RunView{}, err
+		}
+		harnessID, harnessVersion = harness.ID, harness.Version
 	}
 	inputs, err := s.inputArtifacts(ctx, project, version.InputFormats, version.Limits.MaxInputFiles, min(version.Limits.MaxInputBytes, s.cfg.MaxRunInputBytes), request.Input.ArtifactIDs)
 	if err != nil {
@@ -421,6 +438,7 @@ func (s *Service) CreateRun(ctx context.Context, actor Actor, in CreateRunInput,
 		ConnectionID: conn.ID, ConnectionName: conn.Name, ConnectionGen: conn.Generation, Provider: conn.Provider, Model: request.Model, ModelSource: source,
 		Prices: prices, Limits: limits, Reserved: limits.MaxCostMicros, AccountIDs: accounts, ExecutionPerSecond: executionRate,
 		Resources: resources, SandboxPerSecond: sandboxRate,
+		Harness: harnessID, HarnessVersion: harnessVersion,
 		SandboxImage: image,
 		MaxAttempts:  s.cfg.MaxRunAttempts, AvailableAt: now, EventSeq: 1, Billing: BillingPending,
 		CreatedAt: now, UpdatedAt: now, ExpiresAt: now.AddDate(0, 0, project.RetentionDays), Version: 1,
@@ -434,49 +452,89 @@ func (s *Service) CreateRun(ctx context.Context, actor Actor, in CreateRunInput,
 	return s.runView(created, true), nil
 }
 
-func (s *Service) freezeSandboxImage(ctx context.Context, tools []ToolRef) (string, error) {
+// freezeSandboxImage pins the image code runs in, chosen by the allocation: a GPU allocation runs
+// the node's CUDA image. resources is nil for runs billed under an all-inclusive tariff.
+func (s *Service) freezeSandboxImage(ctx context.Context, tools []ToolRef, resources *ResourceProfile) (string, error) {
 	for _, tool := range tools {
-		if tool.Name == toolCodeExecute {
-			if resolver, ok := s.runner.(sandbox.ImageResolver); ok {
-				image, err := resolver.ImageID(ctx)
-				if err != nil {
-					return "", problem("SANDBOX_UNAVAILABLE", "无法固定沙箱镜像，尚未预占预算或派发运行。", 409)
-				}
-				return image, nil
-			}
+		if tool.Name != toolCodeExecute {
+			continue
 		}
+		var image string
+		var err error
+		if resolver, ok := s.runner.(sandbox.AllocationImageResolver); ok {
+			allocation := sandbox.Resources{}
+			if resources != nil {
+				allocation = resources.sandboxResources()
+			}
+			image, err = resolver.ImageIDFor(ctx, allocation)
+		} else if resolver, ok := s.runner.(sandbox.ImageResolver); ok {
+			image, err = resolver.ImageID(ctx)
+		}
+		if err != nil {
+			return "", problem("SANDBOX_UNAVAILABLE", "无法固定沙箱镜像，尚未预占预算或派发运行。", 409)
+		}
+		return image, nil
 	}
 	return "", nil
 }
 
+// versionAllowsProfile applies an agent version's resource policy: the profiles it lists, or CPU
+// profiles only for a version that lists none. A GPU is never handed to an agent not built for one.
+func versionAllowsProfile(version AgentVersion, profile ResourceProfile) bool {
+	if len(version.ResourceProfiles) > 0 {
+		return slices.Contains(version.ResourceProfiles, profile.ID)
+	}
+	return profile.GPU == 0
+}
+
 // Old installations with an all-inclusive execution tariff keep that tariff until an explicit
 // resource price is published. New presets always choose a fixed allocation and a separate price.
-func (s *Service) freezeSandbox(ctx context.Context, project Project, id string, prices *RunPrices) (*ResourceProfile, money.Micros, error) {
+func (s *Service) freezeSandbox(ctx context.Context, project Project, version AgentVersion, id string, prices *RunPrices) (*ResourceProfile, money.Micros, error) {
 	explicit := id != ""
 	execution, err := s.priceByID(ctx, project.TenantID, prices.Execution)
 	if err != nil {
 		return nil, 0, err
 	}
 	if execution.SandboxBilling != "separate" {
-		if !explicit {
+		if !explicit && len(version.ResourceProfiles) == 0 {
 			return nil, 0, nil
 		}
-		return nil, 0, problem("RESOURCE_BILLING_INCLUDED", "当前托管执行价格已包含算力，不能叠加沙箱资源费。请管理员发布资源另列的托管价格新版本。", 409)
+		return nil, 0, problem("RESOURCE_BILLING_INCLUDED", "当前托管执行价格已包含算力，不能叠加沙箱资源费，也无法按规格计费 GPU。请管理员发布资源另列的托管价格新版本。", 409)
+	}
+	info, probeErr := sandbox.Info{}, sandbox.ErrUnavailable
+	if s.runner != nil {
+		info, probeErr = s.runner.Probe(ctx)
 	}
 	if id == "" {
+		// The first allowed profile this node can run, so an integration that omits the field works
+		// on whatever qualifying hardware the deployment has.
 		id = "cpu-1-1"
+		if len(version.ResourceProfiles) > 0 {
+			id = version.ResourceProfiles[0]
+			for _, candidate := range version.ResourceProfiles {
+				if profile, ok := resourceProfile(candidate); ok {
+					if available, _ := profileAvailable(profile, info, probeErr); available {
+						id = candidate
+						break
+					}
+				}
+			}
+		}
 	}
 	profile, ok := resourceProfile(id)
 	if !ok {
 		return nil, 0, invalidFields("沙箱资源规格不正确。", map[string]string{"resourceProfile": "未知资源规格"})
 	}
+	if !versionAllowsProfile(version, profile) {
+		allowed := "CPU 规格"
+		if len(version.ResourceProfiles) > 0 {
+			allowed = strings.Join(version.ResourceProfiles, "、")
+		}
+		return nil, 0, invalidFields("此 Agent 版本不能使用该资源规格。", map[string]string{"resourceProfile": "此版本只能使用：" + allowed})
+	}
 	price, err := s.sandboxPrice(ctx, project.TenantID, id, project.Currency)
 	if err != nil {
 		return nil, 0, err
-	}
-	info, probeErr := sandbox.Info{}, sandbox.ErrUnavailable
-	if s.runner != nil {
-		info, probeErr = s.runner.Probe(ctx)
 	}
 	if available, reason := profileAvailable(profile, info, probeErr); !available {
 		return nil, 0, problem("RESOURCE_UNAVAILABLE", reason, 409)

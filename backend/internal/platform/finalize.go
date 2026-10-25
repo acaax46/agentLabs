@@ -117,6 +117,10 @@ func buildUsageLines(in usageInputs) []UsageLine {
 		line.Category, line.Meter, line.Source, line.Quantity, line.Unit = CategoryExecution, "sandbox_seconds", p.Name+" · "+p.ID, run.Totals.SandboxSeconds, "sandbox_second"
 		line.AmountMicros, line.Status, line.Basis, line.PriceID = &amount, status, "measured", run.Prices.Sandbox
 		line.Note = fmt.Sprintf("固定分配 %d vCPU / %d MiB / %d GPU；按每次隔离执行的宿主观测时长向上取整秒计量，含启动与回收；模型等待和排队不计沙箱资源费。", p.CPU, p.MemoryMB, p.GPU)
+		if run.harness() != HarnessBuiltin {
+			// A code-agent session keeps its container, and so its allocation, while the CLI waits for the model.
+			line.Note = fmt.Sprintf("固定分配 %d vCPU / %d MiB / %d GPU；代码 Agent 会话期间容器一直占用该规格，按容器从启动到移除的宿主观测时长向上取整秒计量，含模型等待，不含排队。", p.CPU, p.MemoryMB, p.GPU)
+		}
 		lines = append(lines, line)
 	}
 	if run.Resources != nil && run.Inflight != nil && run.Inflight.Kind == inflightTool {

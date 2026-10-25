@@ -18,7 +18,8 @@ func TestTheBuiltInCatalogIsPublishedOnceAndImmutable(t *testing.T) {
 	if err := h.svc.publishCatalog(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.count(colAgentVersions, nil) != 5 || h.count(colTools, nil) != 2 || h.count(colAgents, nil) != 5 {
+	published := int64(len(builtinAgents(time.Time{})))
+	if h.count(colAgentVersions, nil) != published || h.count(colTools, nil) != 3 || h.count(colAgents, nil) != published {
 		t.Fatalf("catalog sizes: versions %d tools %d agents %d", h.count(colAgentVersions, nil), h.count(colTools, nil), h.count(colAgents, nil))
 	}
 	agents, err := h.svc.ListAgents(ctx, h.alice)
@@ -30,7 +31,7 @@ func TestTheBuiltInCatalogIsPublishedOnceAndImmutable(t *testing.T) {
 			break
 		}
 	}
-	if len(agents) != 5 || fileAgent == nil || fileAgent.LatestVersion == nil || fileAgent.LatestVersion.ID != fileAnalysisVersionID || len(fileAgent.LatestVersion.Tools) != 2 {
+	if int64(len(agents)) != published || fileAgent == nil || fileAgent.LatestVersion == nil || fileAgent.LatestVersion.ID != fileAnalysisVersionID || len(fileAgent.LatestVersion.Tools) != 2 {
 		t.Fatalf("agents = %+v", agents)
 	}
 	version := fileAgent.LatestVersion
@@ -57,7 +58,7 @@ func TestTheBuiltInCatalogIsPublishedOnceAndImmutable(t *testing.T) {
 
 	tools, err := h.svc.ListTools(ctx, h.alice)
 	h.must(err)
-	if len(tools) != 2 || tools[0].Name != toolCodeExecute || tools[1].Name != toolFilesTransform {
+	if len(tools) != 3 || tools[0].Name != toolCodeExecute || tools[1].Name != toolFilesBundle || tools[2].Name != toolFilesTransform {
 		t.Fatalf("tools = %+v", tools)
 	}
 	h.publishPrices()
@@ -97,7 +98,7 @@ func TestCatalogDigestsAreStableAndSensitive(t *testing.T) {
 	if versionDigest(other) == versionDigest(version) {
 		t.Fatal("version digest ignores the prompt")
 	}
-	if modelToolName("code.execute") != "code_execute" || catalogToolName("files_transform") != "files.transform" || catalogToolName("rm_rf") != "" {
+	if modelToolName("code.execute") != "code_execute" || catalogToolName("files_transform") != "files.transform" || catalogToolName("files_bundle") != "files.bundle" || catalogToolName("rm_rf") != "" {
 		t.Fatal("tool name mapping")
 	}
 }

@@ -68,6 +68,23 @@ func envFloat(name string, fallback float64) (float64, error) {
 	return value, nil
 }
 
+// envIndexes reads a comma-separated list of device indexes such as "0" or "0,1". Empty means none.
+func envIndexes(name string) ([]int, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return nil, nil
+	}
+	var indexes []int
+	for _, part := range strings.Split(raw, ",") {
+		value, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			return nil, fmt.Errorf("%s must list device indexes such as 0 or 0,1", name)
+		}
+		indexes = append(indexes, value)
+	}
+	return indexes, nil
+}
+
 // BlobStoreFromEnv selects where file bodies live. The filesystem backend serves one node or a
 // shared volume; a network object store plugs in here by implementing blob.Store.
 func BlobStoreFromEnv() (blob.Store, error) {
@@ -106,9 +123,15 @@ func SandboxFromEnv() (sandbox.Runner, error) {
 		if err != nil {
 			return nil, err
 		}
+		gpus, err := envIndexes("AGENTLAB_SANDBOX_GPUS")
+		if err != nil {
+			return nil, err
+		}
 		return sandbox.NewDocker(sandbox.DockerConfig{
 			Binary: os.Getenv("AGENTLAB_SANDBOX_CLI"), Image: envString("AGENTLAB_SANDBOX_IMAGE", "agentlab/sandbox-python:20261024"),
 			Runtime: os.Getenv("AGENTLAB_SANDBOX_RUNTIME"), CPUs: cpus, MemoryMB: memory, Slots: slots,
+			GPUs: gpus, GPUImage: strings.TrimSpace(os.Getenv("AGENTLAB_SANDBOX_GPU_IMAGE")),
+			AgentImage: strings.TrimSpace(os.Getenv("AGENTLAB_SANDBOX_AGENT_IMAGE")),
 		})
 	default:
 		return nil, fmt.Errorf("unsupported AGENTLAB_SANDBOX_BACKEND %q (supported: docker, none)", backend)

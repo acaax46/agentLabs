@@ -402,6 +402,12 @@ export function RunDetailPage() {
               {view === 'tools' && (
                 <section className="wb-panel">
                   <SectionHeader title="工具调用" />
+                  {run.harness && run.harness.id !== 'builtin' && (
+                    <p className="wb-muted">
+                      此运行由 {run.harness.name} 在沙箱内执行。CLI
+                      的工具步骤不是平台工具调用、不单独计费，按引擎自报显示在执行时间线；模型请求与沙箱时长由平台计量。
+                    </p>
+                  )}
                   <QueryState pending={calls.isPending} error={calls.error} retry={calls.refetch}>
                     <ToolTree run={run} calls={calls.data?.items ?? []} />
                   </QueryState>
@@ -444,6 +450,12 @@ export function RunDetailPage() {
                     },
                     { label: '执行时限', value: `${run.limits.maxExecutionSeconds} 秒` },
                     { label: '冻结镜像', value: run.sandboxImage || '未使用或历史运行未记录' },
+                    {
+                      label: '执行引擎',
+                      value: run.harness
+                        ? `${run.harness.name} ${run.harness.version}`
+                        : 'AgentLab 内置循环',
+                    },
                     {
                       label: '沙箱资源',
                       value: run.resources

@@ -251,8 +251,11 @@ type AgentVersion struct {
 	// ResourceProfiles, when set, are the only sandbox allocations a run of this version may use, in
 	// order of preference. Without it a version runs on CPU allocations only. Omitted from JSON when
 	// empty so the digests of versions published before it existed do not change.
-	ResourceProfiles []string  `json:"resourceProfiles,omitempty" bson:"resourceProfiles,omitempty"`
-	CreatedAt        time.Time `json:"createdAt" bson:"createdAt"`
+	ResourceProfiles []string `json:"resourceProfiles,omitempty" bson:"resourceProfiles,omitempty"`
+	// Harnesses, when set, are the agent loops a run of this version may choose, the first being the
+	// default: code-agent CLIs that run inside the sandbox. Without it the builtin loop runs.
+	Harnesses []string  `json:"harnesses,omitempty" bson:"harnesses,omitempty"`
+	CreatedAt time.Time `json:"createdAt" bson:"createdAt"`
 }
 
 // Meter declares how a tool is measured. Unit is call, file or second.
@@ -406,6 +409,8 @@ type Run struct {
 	Resources          *ResourceProfile  `bson:"resources,omitempty"`
 	SandboxPerSecond   money.Micros      `bson:"sandboxPerSecond"`
 	SandboxImage       string            `bson:"sandboxImage,omitempty"`
+	Harness            string            `bson:"harness,omitempty"` // agent loop frozen at admission; empty is the builtin loop
+	HarnessVersion     string            `bson:"harnessVersion,omitempty"`
 	Attempts           int               `bson:"attempts"`
 	MaxAttempts        int               `bson:"maxAttempts"`
 	AvailableAt        time.Time         `bson:"availableAt"`

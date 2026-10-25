@@ -1,0 +1,40 @@
+# AgentLab code-agent sandbox: the CPU sandbox (Python 3.12 with pandas, numpy, openpyxl, matplotlib)
+# plus Node.js 22, git, ripgrep, the pinned code-agent CLIs and the session driver that connects a
+# CLI to the platform's metered model channel over stdio (session protocol v1, see harness.py).
+# It holds no account, key, provider address or login file; the CLIs only ever see a loopback relay.
+#
+# The CLIs come from the existing pinned tools image (runtime/agents, package-lock.json), so the
+# build needs no npm registry:
+#   docker build -t agentlab/agents:validated-20261023 runtime/agents        (if not present)
+#   docker build -f runtime/sandbox/Dockerfile.agents -t agentlab/sandbox-agents:20261025 runtime/sandbox
+# Behind a Debian mirror: --build-arg APT_MIRROR=http://mirrors.aliyun.com
+# The platform starts it with no network, a read-only root, no capabilities and a non-root user,
+# like every sandbox (backend/internal/platform/sandbox/session.go).
+ARG SANDBOX_BASE=agentlab/sandbox-python:20261024
+ARG TOOLS_IMAGE=agentlab/agents:validated-20261023
+FROM ${TOOLS_IMAGE} AS tools
+
+FROM ${SANDBOX_BASE}
+ARG APT_MIRROR=
+USER root
+RUN if [ -n "${APT_MIRROR}" ]; then sed -i "s|http://deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; fi \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends git ripgrep procps ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=tools /usr/local/bin/node /usr/local/bin/node
+COPY --from=tools /opt/agentlab-tools /opt/agentlab-tools
+RUN for tool in pi opencode codex claude; do ln -s "/opt/agentlab-tools/node_modules/.bin/${tool}" "/usr/local/bin/${tool}"; done \
+ && node --version && pi --version && opencode --version && codex --version && claude --version
+COPY harness.py /opt/agentlab/harness.py
+ENV DISABLE_AUTOUPDATER=1 \
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+    OPENCODE_DISABLE_AUTOUPDATE=true \
+    OPENCODE_DISABLE_MODELS_FETCH=true \
+    PI_OFFLINE=1 \
+    OTEL_SDK_DISABLED=true
+USER 10001:10001
+WORKDIR /work
+LABEL org.agentlab.sandbox-protocol="1" \
+      org.agentlab.session-protocol="1" \
+      org.agentlab.harnesses="pi@1.4.0 opencode@1.19.4 codex@0.164.0 claude-code@2.1.309"
+ENTRYPOINT ["python3", "-I", "-B", "/opt/agentlab/harness.py"]

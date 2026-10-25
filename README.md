@@ -15,7 +15,7 @@ AgentLab 的新方向是托管 Agent 执行与 Tools API 平台：用户通过�
 - [黑色极客视觉规范](DESIGN.md)：目标配色、布局、控件、运行与账单交互。
 - [实施现状与迁移边界](docs/implementation-status.md)：已有代码与未来目标的区别。
 - [本地启动与 MVP 视频脚本](docs/local-start-and-mvp-video.md)：从本机启动到录制最小真实主链路的逐步说明。
-- 当前服务端目录提供 5 个平台预设 Agent：文件分析、表格清洗、数据质量检查、报表与图表、文档摘要；用户自定义 Agent 的草稿/发布链路仍未开放。
+- 当前服务端目录提供 9 个平台预设 Agent：文件分析、表格清洗、数据质量检查、报表与图表、文档摘要、通用代码生成、工作台搭建师、GPU 计算和代码 Agent；GPU Agent 需要本机 CUDA 条件，代码 Agent 可选择已固定版本的执行引擎，用户自定义 Agent 的草稿/发布链路仍未开放。
 - [共用开发规则](AGENTS.md)：Codex / OpenCode 的项目入口。
 - [品牌状态](assets/brand.json) / [目标设计变量](assets/design-tokens.target.json)：仅元数据，本轮未写入前端 CSS。
 
@@ -96,6 +96,20 @@ pnpm dev:api --env-file .env.dev
 ```
 
 平台模型来自 `BASE_URL` / `API_KEY` 导入的共享连接：在工作台“账户连接”验证后才可用，并应在导入之后再执行 `pnpm seed:platform`，价格表才会覆盖它的模型。没有沙箱镜像或 Docker 时，`GET /capabilities` 报告 `codeExecution=false` 与原因，代码执行被拒绝，不会退回到宿主执行。
+
+#### GPU 与代码 Agent 引擎（可选）
+
+```powershell
+pnpm build:sandbox:cuda     # 在 CPU 沙箱之上加 PyTorch 2.7.1+cu118 与 scikit-learn（约 3 GB）
+pnpm build:sandbox:agents   # 在 CPU 沙箱之上加 Node 22、git、ripgrep 与固定版本的 pi / OpenCode / Codex CLI / Claude Code
+$env:AGENTLAB_SANDBOX_GPUS = "0"                                         # 可租用的 NVIDIA 显卡序号；留空即不开放 GPU
+$env:AGENTLAB_SANDBOX_GPU_IMAGE = "agentlab/sandbox-python-cuda:20261025"
+$env:AGENTLAB_SANDBOX_AGENT_IMAGE = "agentlab/sandbox-agents:20261025"
+$env:AGENTLAB_SANDBOX_CPUS = "4"; $env:AGENTLAB_SANDBOX_MEMORY_MB = "8192" # GPU 规格需要 4 vCPU / 8 GiB
+```
+
+- GPU：Docker 需带 NVIDIA 运行时（Docker Desktop + WSL2 已提供）。每张列出的卡先在 CUDA 镜像里跑一次真实矩阵运算，通过后才出现在规格里；规格按型号逐词匹配显卡名，GPU 按卡型计价、每次代码执行独占整卡，容器仍无网络、只读根、非 root。本机预设为 `gpu-rtx3070-laptop-4-8`（RTX 3070 Laptop），只有声明了 GPU 规格的 Agent 版本（如“GPU 计算 Agent”）能使用。
+- 代码 Agent 引擎：“代码 Agent（可选引擎）”的运行可选 `harness`（`pi`、`opencode`、`codex`、`claude-code`）。CLI 在无网络的沙箱里运行整个任务，模型请求经容器回环地址上的转发器、通过标准输入输出到宿主机：宿主机校验请求、固定冻结的模型、限制输出 token、去掉路由/插件/服务端状态与付费服务端工具，用真实凭据转发并记录供应商用量后才把答复交给 CLI；沙箱里没有真实密钥或供应商地址。Codex CLI 只支持 Responses 协议、Claude Code 只支持 Anthropic Messages 协议，所用连接必须提供 `/responses` 或 `/messages`，否则请求被拒绝且不计费。会话期间容器一直占用所选规格，沙箱秒含模型等待。
 
 在工作台创建项目、设置预算并签发 API Key（密钥明文只显示一次）后，开发者只需要 `/v1`：
 
@@ -188,6 +202,8 @@ pnpm test:e2e:live
 托管平台还有两类需要真实依赖的检查：`pnpm test:sandbox`（先 `pnpm build:sandbox`）在真实容器里验证隔离、资源限额，并让 Agent 运行真实的 pandas/matplotlib 代码；`pnpm smoke:platform` 启动真实的服务进程，仅经公开 API Key 监听走完整条开发者链路；`go -C backend test -race ./internal/platform/...` 需要 C 编译器，本机缺少时在 Linux 容器内运行。
 
 `pnpm accept:real-models` 是消耗真实额度的验收（约 0.005 美元）：用 `.env.dev` 里的真实供应商，对三款 Flash 模型各跑一次 CSV 与 Excel 分析、一次自带账户（BYOK）运行和独立工具调用，按产物内容判定结果，并核对用量、账本、预算、存储披露与秘密泄露；加 `--record` 会写出脱敏记录 `assets/p0-backend-acceptance.json`。模型输出不确定，每个场景最多两次尝试并全部记录。需要 MongoDB、Docker 与沙箱镜像，不进入 CI。
+
+GPU 与代码 Agent 引擎另有真实检查：`pnpm test:sandbox:gpu` 在真实显卡上跑 CUDA 检查与隔离的 PyTorch 运算，并让“GPU 计算 Agent”端到端训练一个小模型、按卡型计费（需要 NVIDIA 运行时、两个镜像与 MongoDB）；`pnpm test:sandbox:sessions` 让四个 CLI 各在真实会话容器里对接脚本化模型，验证只经转发器取模型、工具在无网络沙箱内执行并交回文件（不消耗模型额度）；`pnpm accept:code-agents` 用 `.env.dev` 的真实供应商经公开 API Key 监听跑四个引擎与 GPU Agent，按产物内容判定，并检查沙箱环境变量里没有任何凭据（消耗少量真实额度，`--record` 写出 `assets/code-agent-acceptance.json`）。这些都不进入 CI。
 
 普通浏览器回归和真实 guest 场景是不同门槛。可用 AGENTLAB_BROWSER_PATH 指定已有 Chromium。测试端口与数据库由现有配置隔离；测试结果不证明新版云平台或黑色界面已完成。
 

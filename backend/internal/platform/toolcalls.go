@@ -69,6 +69,18 @@ func callBound(tool string, input json.RawMessage) (quantity int64, seconds int,
 			return 0, 0, invalidFields("工具输入不正确。", map[string]string{"input.inputs": "需要 1–16 个输入文件"})
 		}
 		return int64(len(spec.Inputs)), 30, nil
+	case toolFilesBundle:
+		var args struct {
+			Inputs []string `json:"inputs"`
+			Output string   `json:"output"`
+		}
+		if err = decodeArguments(string(input), &args); err != nil {
+			return 0, 0, invalidFields("工具输入不正确。", map[string]string{"input": err.Error()})
+		}
+		if len(args.Inputs) < 1 || len(args.Inputs) > 32 || strings.TrimSpace(args.Output) == "" {
+			return 0, 0, invalidFields("工具输入不正确。", map[string]string{"input": "需要 1–32 个输入文件和 ZIP 输出名"})
+		}
+		return int64(len(args.Inputs)), 30, nil
 	}
 	return 0, 0, notFound()
 }
@@ -149,7 +161,7 @@ func (s *Service) CreateToolCall(ctx context.Context, actor Actor, toolName stri
 	if err != nil {
 		return ToolCallView{}, err
 	}
-	image, err := s.freezeSandboxImage(ctx, []ToolRef{{Name: tool.Name}})
+	image, err := s.freezeSandboxImage(ctx, []ToolRef{{Name: tool.Name}}, nil)
 	if err != nil {
 		return ToolCallView{}, err
 	}

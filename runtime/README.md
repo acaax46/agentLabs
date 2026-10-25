@@ -4,15 +4,16 @@
 
 ## 当前目录职责
 
-| 路径                                 | 实际用途                                                        |
-| ------------------------------------ | --------------------------------------------------------------- |
-| guest/                               | Linux guest 与 OpenSandbox execd 的实际执行路径                 |
-| agents/                              | 多种 Agent CLI 的开发工作镜像；安装不代表账户已授权或协议已适配 |
-| cc-switch/                           | 本地配置管理与受限导出工具；不是云端凭据服务                    |
-| vm/                                  | QEMU TCG 启动验证资产，不代表商用节点性能                       |
-| mcp/                                 | 候选连接器和风险清单，不是已上线 Tools API 目录                 |
-| judge/、problem-banks/               | 旧教育原型与独立结果校验参考                                    |
-| versions.lock.json、assets.lock.json | 版本、摘要与资产来源记录                                        |
+| 路径                                 | 实际用途                                                                                                                                     |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| guest/                               | Linux guest 与 OpenSandbox execd 的实际执行路径                                                                                              |
+| agents/                              | 多种 Agent CLI 的固定版本；本身是开发工作镜像，不含账户                                                                                      |
+| sandbox/                             | 托管平台的三个沙箱镜像：CPU（Dockerfile）、CUDA（Dockerfile.cuda）、代码 Agent 会话（Dockerfile.agents + harness.py，CLI 取自 agents/ 镜像） |
+| cc-switch/                           | 本地配置管理与受限导出工具；不是云端凭据服务                                                                                                 |
+| vm/                                  | QEMU TCG 启动验证资产，不代表商用节点性能                                                                                                    |
+| mcp/                                 | 候选连接器和风险清单，不是已上线 Tools API 目录                                                                                              |
+| judge/、problem-banks/               | 旧教育原型与独立结果校验参考                                                                                                                 |
+| versions.lock.json、assets.lock.json | 版本、摘要与资产来源记录                                                                                                                     |
 
 业务控制面、秘密、预期结果和费用记录留在不可信执行环境外。执行器不得通过缺少隔离时直接运行宿主命令来补全能力。
 

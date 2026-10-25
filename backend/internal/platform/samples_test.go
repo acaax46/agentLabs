@@ -125,13 +125,22 @@ func TestRecordSamples(t *testing.T) {
 		} `json:"items"`
 	}
 	decodeInto(t, get(web, "agents.list", "/agents"), &agents)
-	get(web, "agent.get", "/agents/"+agents.Items[0].ID)
+	// The file analysis agent runs under the sample tariff; GPU and code-agent versions need resource prices.
+	fileAgent := agents.Items[0]
+	for _, agent := range agents.Items {
+		if agent.ID == "agt_file_analysis" {
+			fileAgent = agent
+		}
+	}
+	get(web, "agent.get", "/agents/"+fileAgent.ID)
+	get(web, "agent.get.code", "/agents/agt_code_agent")
+	get(web, "agent.get.gpu", "/agents/agt_gpu_compute")
 	get(web, "tools.list", "/tools")
 	get(web, "tool.get", "/tools/files.transform")
 	get(web, "capabilities", "/capabilities")
 
 	runBody := map[string]any{
-		"projectId": project, "agentVersionId": agents.Items[0].LatestVersion.ID, "modelConnectionId": models.Items[0].ConnectionID, "model": models.Items[0].Model,
+		"projectId": project, "agentVersionId": fileAgent.LatestVersion.ID, "modelConnectionId": models.Items[0].ConnectionID, "model": models.Items[0].Model,
 		"input":  map[string]any{"instruction": "合并两份订单并画图", "artifactIds": files},
 		"limits": map[string]any{"maxCostMicros": "2000000", "currency": "CNY", "maxExecutionSeconds": 120, "maxToolCalls": 20},
 	}

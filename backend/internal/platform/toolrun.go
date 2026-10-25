@@ -85,6 +85,8 @@ func (x *execution) driveTool(ctx context.Context) runOutcome {
 		out = x.execCode(ctx, record.ID, x.run.ToolInput)
 	case toolFilesTransform:
 		out = x.execFiles(ctx, record.ID, x.run.ToolInput)
+	case toolFilesBundle:
+		out = x.execBundle(ctx, record.ID, x.run.ToolInput)
 	default:
 		out = failedTool("TOOL_UNIMPLEMENTED", "this tool is not available on this deployment")
 	}

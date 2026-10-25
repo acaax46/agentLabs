@@ -72,12 +72,12 @@ func TestProjectDetailAndUsageBreakdownTellTheTruthOverHTTP(t *testing.T) {
 		return *body.Counts
 	}
 	// Only the shared model connection and the one published agent are there to begin with.
-	if got := detail(); got != (counts{APIKeys: 0, Connections: 1, Agents: 5}) {
+	if got := detail(); got != (counts{APIKeys: 0, Connections: 1, Agents: platform.BuiltinAgentCount()}) {
 		t.Fatalf("a new project = %+v", got)
 	}
 	alice.send("PUT", "/projects/"+project.ID+"/connections/conn_mine", nil, 200)
 	alice.send("POST", "/api-keys", map[string]any{"projectId": project.ID, "name": "k", "scopes": []string{"runs:read"}}, 201)
-	if got := detail(); got != (counts{APIKeys: 1, Connections: 2, Agents: 5}) {
+	if got := detail(); got != (counts{APIKeys: 1, Connections: 2, Agents: platform.BuiltinAgentCount()}) {
 		t.Fatalf("after a grant and a key = %+v", got)
 	}
 

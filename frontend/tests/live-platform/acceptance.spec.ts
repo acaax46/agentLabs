@@ -64,7 +64,7 @@ for (const size of cases) {
     const model = models.items.find((item) => item.source === 'platform' && item.usable);
     if (!model) throw new Error('验收环境没有已验证且已定价的平台模型，不能用模拟响应代替。');
     const agents = await json<{ items: Agent[] }>(page.request, '/api/v1/platform/agents');
-    const agent = agents.items[0];
+    const agent = agents.items.find((item) => item.id === 'agt_file_analysis');
     if (!agent?.latestVersion) throw new Error('未发布文件分析 Agent。');
     await page.goto(`/#/agents/${agent.id}`);
     await page.getByLabel('上传输入文件').setInputFiles({

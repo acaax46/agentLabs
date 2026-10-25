@@ -329,6 +329,7 @@ func (h *harness) publishPrices() {
 		{Kind: PriceTool, Name: "code-call", Currency: "CNY", Tool: toolCodeExecute, Unit: "call", PerUnitMicros: 5_000},
 		{Kind: PriceTool, Name: "code-second", Currency: "CNY", Tool: toolCodeExecute, Unit: "second", PerUnitMicros: 2_000},
 		{Kind: PriceTool, Name: "files", Currency: "CNY", Tool: toolFilesTransform, Unit: "file", PerUnitMicros: 3_000},
+		{Kind: PriceTool, Name: "bundle", Currency: "CNY", Tool: toolFilesBundle, Unit: "file", PerUnitMicros: 0},
 	} {
 		_, err := h.svc.CreatePrice(context.Background(), h.admin, in)
 		h.must(err)

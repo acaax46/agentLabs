@@ -14,7 +14,8 @@ import (
 )
 
 // ResourceProfile is a fixed allocation, not a claim about observed CPU utilization.
-// GPU profiles are published for planning only until a GPU runner is implemented.
+// A GPU profile names one card model: GPUs are priced per card type, and a node runs the profile
+// only with a device of that model that passed a real CUDA check.
 type ResourceProfile struct {
 	ID       string `json:"id" bson:"id"`
 	Name     string `json:"name" bson:"name"`
@@ -22,15 +23,34 @@ type ResourceProfile struct {
 	MemoryMB int    `json:"memoryMB" bson:"memoryMB"`
 	GPU      int    `json:"gpu" bson:"gpu"`
 	GPUType  string `json:"gpuType,omitempty" bson:"gpuType,omitempty"`
+	// GPUModel is matched word by word against the device names a node reports.
+	GPUModel string `json:"gpuModel,omitempty" bson:"gpuModel,omitempty"`
 }
+
+const (
+	profileRTX3070Laptop = "gpu-rtx3070-laptop-4-8"
+	profileL4            = "gpu-l4-8-32"
+)
 
 func ResourceProfiles() []ResourceProfile {
 	return []ResourceProfile{
 		{ID: "cpu-1-1", Name: "基础", CPU: 1, MemoryMB: 1024},
 		{ID: "cpu-2-4", Name: "标准", CPU: 2, MemoryMB: 4096},
 		{ID: "cpu-4-8", Name: "计算", CPU: 4, MemoryMB: 8192},
-		{ID: "gpu-l4-8-32", Name: "GPU（预设，未开放）", CPU: 8, MemoryMB: 32768, GPU: 1, GPUType: "NVIDIA L4 24 GiB"},
+		{ID: profileRTX3070Laptop, Name: "GPU · RTX 3070 Laptop（本机开发卡）", CPU: 4, MemoryMB: 8192, GPU: 1, GPUType: "NVIDIA GeForce RTX 3070 Laptop GPU 8 GiB", GPUModel: "RTX 3070 Laptop"},
+		{ID: profileL4, Name: "GPU · L4", CPU: 8, MemoryMB: 32768, GPU: 1, GPUType: "NVIDIA L4 24 GiB", GPUModel: "L4"},
 	}
+}
+
+// gpuRates are preset per-card-second rates in micro-units, by card model and currency. The local
+// RTX 3070 Laptop rate exists to exercise metering on a development machine; it is not a quote.
+var gpuRates = map[string]map[string]money.Micros{
+	"L4":              {"USD": 400, "CNY": 2000},
+	"RTX 3070 Laptop": {"USD": 120, "CNY": 600},
+}
+
+func (p ResourceProfile) sandboxResources() sandbox.Resources {
+	return sandbox.Resources{CPUs: float64(p.CPU), MemoryMB: p.MemoryMB, GPU: p.GPU, GPUModel: p.GPUModel}
 }
 
 func resourceProfile(id string) (ResourceProfile, bool) {
@@ -70,18 +90,26 @@ func PresetPrices(provider string) []CreatePriceInput {
 				ReferenceURL: "https://openrouter.ai/" + model.id, ReferenceAt: &at,
 				Note: "OpenRouter /api/v1/models 基础价快照；非页面最低价或供应商结算；DeepSeek 时段变价不随运行浮动。CNY 按 1 USD = 7.20 CNY 固定换算，无加价。"})
 		}
-		// Sandbox allocations: CNY 100/vCPU-s + 25/GiB-s + 2000/L4-s;
-		// USD 20/vCPU-s + 5/GiB-s + 400/L4-s. Integer micro-units throughout.
-		cpu, memory, gpu := money.Micros(20), money.Micros(5), money.Micros(400)
+		// Sandbox allocations: CNY 100/vCPU-s + 25/GiB-s, USD 20/vCPU-s + 5/GiB-s, plus a per-card
+		// rate for GPU profiles (see gpuRates). Integer micro-units throughout.
+		cpu, memory := money.Micros(20), money.Micros(5)
 		execution := money.Micros(10)
 		if currency == "CNY" {
-			cpu, memory, gpu, execution = 100, 25, 2000, 50
+			cpu, memory, execution = 100, 25, 50
 		}
 		prices = append(prices, CreatePriceInput{Kind: PriceExecution, Name: "hosted-20261024-" + currency, Currency: currency, PerSecondMicros: execution, SandboxBilling: "separate", Note: "平台预设托管服务价：开始运行至结束按秒向上取整，含模型等待，不含排队；沙箱资源另列。"})
 		for _, profile := range ResourceProfiles() {
+			gpu := gpuRates[profile.GPUModel][currency]
+			note := fmt.Sprintf("平台预设资源价，非云厂商报价；每次执行秒向上取整。vCPU/GiB 每秒微单位：%s/%s；无 GPU。", cpu, memory)
+			if profile.GPU > 0 {
+				note = fmt.Sprintf("平台预设资源价，非云厂商报价；每次执行秒向上取整。vCPU/GiB/%s 每卡每秒微单位：%s/%s/%s；GPU 按卡型定价，独占整卡。", profile.GPUModel, cpu, memory, gpu)
+				if profile.ID == profileRTX3070Laptop {
+					note += "本机开发卡，用于验证计量链路。"
+				}
+			}
 			prices = append(prices, CreatePriceInput{Kind: PriceSandbox, Name: "sandbox-20261024-" + currency + "-" + profile.ID, Currency: currency, ResourceProfile: profile.ID,
 				PerSecondMicros: money.Micros(profile.CPU)*cpu + money.Micros(profile.MemoryMB/1024)*memory + money.Micros(profile.GPU)*gpu,
-				Note:            fmt.Sprintf("平台预设资源价，非云厂商报价；每次执行秒向上取整。vCPU/GiB/GPU 每秒微单位：%s/%s/%s；GPU 尚未开放。", cpu, memory, gpu)})
+				Note:            note})
 		}
 		for _, unit := range []string{"call", "second"} {
 			rate := money.Micros(0)
@@ -92,6 +120,7 @@ func PresetPrices(provider string) []CreatePriceInput {
 				Note: "Agent 内调用不另收工具调度费，算力按所选沙箱规格计量；独立 Tools API 每秒价含 1 vCPU / 1 GiB 算力，不叠加沙箱或托管费。"})
 		}
 		prices = append(prices, CreatePriceInput{Kind: PriceTool, Name: "files-20261024-" + currency, Currency: currency, Tool: toolFilesTransform, Unit: "file", PerUnitMicros: 0, Note: "平台预设：结构化文件工具处理不另收费；内部读取、写入与调度不收费。"})
+		prices = append(prices, CreatePriceInput{Kind: PriceTool, Name: "bundle-20261024-" + currency, Currency: currency, Tool: toolFilesBundle, Unit: "file", PerUnitMicros: 0, Note: "平台预设：工作区文件打包不另收费；不包含远程部署或第三方托管。"})
 	}
 	return prices
 }
@@ -117,11 +146,14 @@ func (s *Service) sandboxPrice(ctx context.Context, tenant, profile, currency st
 }
 
 func profileAvailable(profile ResourceProfile, info sandbox.Info, err error) (bool, string) {
-	if profile.GPU > 0 {
-		return false, "GPU 执行后端尚未开放，不能提交或计费。"
-	}
 	if err != nil {
 		return false, "隔离执行环境不可用。"
+	}
+	if profile.GPU > 0 && info.MatchingGPUs(profile.GPUModel) < profile.GPU {
+		if len(info.GPUs) == 0 && info.GPUReason != "" {
+			return false, info.GPUReason
+		}
+		return false, "当前执行节点没有通过检查的 " + profile.GPUType + "。"
 	}
 	if info.CPUs < float64(profile.CPU) || info.MemoryMB < profile.MemoryMB {
 		return false, "当前执行节点不支持此 CPU / 内存规格。"

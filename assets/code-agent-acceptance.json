@@ -1,0 +1,226 @@
+{
+  "verifiedOn": "2026-10-25T01:38:40.805Z",
+  "note": "Real model provider, real Docker sessions and a real NVIDIA card, throwaway database, public API key only. Sanitized: no keys, no file contents.",
+  "images": {
+    "cpu": "agentlab/sandbox-python:20261024",
+    "gpu": "agentlab/sandbox-python-cuda:20261025",
+    "agents": "agentlab/sandbox-agents:20261025"
+  },
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "engines": [
+    "pi",
+    "opencode",
+    "codex",
+    "claude-code"
+  ],
+  "providerSpendUsd": 0.010627,
+  "elapsedSeconds": 84,
+  "passed": true,
+  "scenarios": [
+    {
+      "scenario": "engine-opencode",
+      "harness": "opencode",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_d97b132b383bb0d44a1d4a85b046403a",
+          "status": "succeeded",
+          "harness": {
+            "id": "opencode",
+            "name": "OpenCode",
+            "version": "1.19.4"
+          },
+          "resources": "cpu-2-4",
+          "costMicros": "22194",
+          "currency": "CNY",
+          "durationMs": 20022,
+          "modelSteps": 3,
+          "inputTokens": 22729,
+          "outputTokens": 520,
+          "sandboxSeconds": 20,
+          "reportedSteps": 4,
+          "outputs": [
+            {
+              "name": "summary.csv",
+              "sizeBytes": 36,
+              "sha256": "0fc865a8aa4f60fa052a09f39ee927e058a4dd2ec31c8f2241ef38921bed8c8d"
+            },
+            {
+              "name": "env.txt",
+              "sizeBytes": 683,
+              "sha256": "287273dcfe0f52162db7dc0c35cf7795e983b71e130621bfc79258c829f2288b"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "engine-pi",
+      "harness": "pi",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_a5ee5095ed3b9ed10379f2ab28020e3c",
+          "status": "succeeded",
+          "harness": {
+            "id": "pi",
+            "name": "pi",
+            "version": "1.4.0"
+          },
+          "resources": "cpu-2-4",
+          "costMicros": "19976",
+          "currency": "CNY",
+          "durationMs": 22060,
+          "modelSteps": 4,
+          "inputTokens": 9061,
+          "outputTokens": 878,
+          "sandboxSeconds": 22,
+          "reportedSteps": 5,
+          "outputs": [
+            {
+              "name": "summary.csv",
+              "sizeBytes": 36,
+              "sha256": "0fc865a8aa4f60fa052a09f39ee927e058a4dd2ec31c8f2241ef38921bed8c8d"
+            },
+            {
+              "name": "env.txt",
+              "sizeBytes": 680,
+              "sha256": "acccb48e87f404def3dd46ab4d54efc5c3461b85e5ea5049903f27e519aec299"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "engine-codex",
+      "harness": "codex",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_361f74c1f1d152264037d3e7fceb421b",
+          "status": "succeeded",
+          "harness": {
+            "id": "codex",
+            "name": "Codex CLI",
+            "version": "0.164.0"
+          },
+          "resources": "cpu-2-4",
+          "costMicros": "13670",
+          "currency": "CNY",
+          "durationMs": 21836,
+          "modelSteps": 3,
+          "inputTokens": 21291,
+          "outputTokens": 951,
+          "sandboxSeconds": 22,
+          "reportedSteps": 3,
+          "outputs": [
+            {
+              "name": "summary.csv",
+              "sizeBytes": 35,
+              "sha256": "2bd054a1b5d843f2c9a0cb0628e1bc13a83030d90cb486c3f4c4f9e4552874e5"
+            },
+            {
+              "name": "env.txt",
+              "sizeBytes": 969,
+              "sha256": "8afef9b702c9aed05c3e8307a786f404cd394dfea013b38f40582756c5e21fdf"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "engine-claude-code",
+      "harness": "claude-code",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_636f26efe98f16839907a63fe667ad86",
+          "status": "succeeded",
+          "harness": {
+            "id": "claude-code",
+            "name": "Claude Code",
+            "version": "2.1.309"
+          },
+          "resources": "cpu-2-4",
+          "costMicros": "31555",
+          "currency": "CNY",
+          "durationMs": 23573,
+          "modelSteps": 5,
+          "inputTokens": 63894,
+          "outputTokens": 1867,
+          "sandboxSeconds": 24,
+          "reportedSteps": 6,
+          "outputs": [
+            {
+              "name": "summary.csv",
+              "sizeBytes": 39,
+              "sha256": "3f0cddba204ad9b8ef151dacad760afbf2ddf0c05aa47d25765c2b743ad0d6af"
+            },
+            {
+              "name": "env.txt",
+              "sizeBytes": 1360,
+              "sha256": "1004fdeb705a0ff966c6cfaa7952ba0e9be41a73e024fac87dfdd341a50b517f"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "gpu-agent",
+      "harness": "builtin",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_795b1da2f382bdf2cc96d5d28efe0aac",
+          "status": "succeeded",
+          "harness": {
+            "id": "builtin",
+            "name": "AgentLab 内置循环",
+            "version": "1"
+          },
+          "resources": "gpu-rtx3070-laptop-4-8",
+          "costMicros": "45465",
+          "currency": "CNY",
+          "durationMs": 37069,
+          "modelSteps": 3,
+          "inputTokens": 5773,
+          "outputTokens": 1338,
+          "sandboxSeconds": 29,
+          "reportedSteps": 0,
+          "outputs": [
+            {
+              "name": "gpu_fit.json",
+              "sizeBytes": 113,
+              "sha256": "f07180e2411bf96998c236c7c1bb2aec818cb88b910fa8fca2ff805d634c655d"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    }
+  ]
+}

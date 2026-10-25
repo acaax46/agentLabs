@@ -189,7 +189,7 @@ func TestProjectDetailCountsWhatTheProjectCanUseRightNow(t *testing.T) {
 
 	// The workspace's shared model connection is usable by every project; nothing else is yet, and the one
 	// published agent belongs to the catalogue.
-	if got := counts(); got != (ProjectCounts{APIKeys: 0, Connections: 1, Agents: 5}) {
+	if got := counts(); got != (ProjectCounts{APIKeys: 0, Connections: 1, Agents: len(builtinAgents(time.Time{}))}) {
 		t.Fatalf("a new project = %+v", got)
 	}
 	for _, id := range []string{"conn_mine", "conn_pending", "conn_expired", "conn_revoked"} {

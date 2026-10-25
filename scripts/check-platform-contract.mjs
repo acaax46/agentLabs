@@ -64,6 +64,8 @@ const expectations = {
   'grants.empty': ['GrantList', list('Grant')],
   'agents.list': ['AgentList', list('Agent')],
   'agent.get': ['AgentDetail', '{ agent: Agent; versions: AgentVersion[] }'],
+  'agent.get.code': ['AgentDetail', '{ agent: Agent; versions: AgentVersion[] }'],
+  'agent.get.gpu': ['AgentDetail', '{ agent: Agent; versions: AgentVersion[] }'],
   'tools.list': ['ToolList', list('Tool')],
   'tool.get': ['Tool', 'Tool'],
   capabilities: ['Readiness', 'Readiness'],

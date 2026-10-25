@@ -25,6 +25,8 @@ type Capabilities struct {
 	MaxUploadBytes      int64           `json:"maxUploadBytes"`
 	MaxRunInputBytes    int64           `json:"maxRunInputBytes"`
 	WorkerConcurrency   int             `json:"workerConcurrency"`
+	// Harnesses are the agent loops this deployment knows, with whether it can run each now.
+	Harnesses []HarnessStatus `json:"harnesses"`
 }
 
 // Status is the readiness report served to load balancers and the workbench.
@@ -79,6 +81,10 @@ func (s *Service) Readiness(ctx context.Context) Status {
 		status.Capabilities.CodeExecution, status.Capabilities.Isolation = true, info.Backend+"/"+info.Isolation
 	}
 	status.Checks = append(status.Checks, Check{Name: "sandbox", OK: status.Capabilities.CodeExecution, Detail: status.Capabilities.CodeExecutionReason})
+	// A fresh deadline: the sandbox probe above may have used most of the shared one.
+	engines, done := context.WithTimeout(ctx, 10*time.Second)
+	status.Capabilities.Harnesses = s.harnessStatuses(engines)
+	done()
 	s.readyMu.Lock()
 	s.readyAt, s.readyValue = time.Now(), status
 	s.readyMu.Unlock()

@@ -27,6 +27,9 @@ func NewKit(t *testing.T) *Kit {
 
 func (k *Kit) PublishPrices() { k.h.publishPrices() }
 
+// BuiltinAgentCount is how many agents the built-in catalog publishes, so tests need not hard-code it.
+func BuiltinAgentCount() int { return len(builtinAgents(time.Time{})) }
+
 // Push queues scripted model answers.
 func (k *Kit) Push(steps ...func(http.ResponseWriter, map[string]any)) { k.h.model.push(steps...) }
 

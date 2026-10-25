@@ -8,25 +8,25 @@ import (
 
 // Identifiers of the built-in catalog. They are readable on purpose: integrations pin them.
 const (
-	fileAnalysisAgentID      = "agt_file_analysis"
-	fileAnalysisVersionID    = "agv_file_analysis_1_0_0"
-	tableCleanupAgentID      = "agt_table_cleanup"
-	tableCleanupVersionID    = "agv_table_cleanup_1_0_0"
-	dataQualityAgentID       = "agt_data_quality"
-	dataQualityVersionID     = "agv_data_quality_1_0_0"
-	reportChartAgentID       = "agt_report_chart"
-	reportChartVersionID     = "agv_report_chart_1_0_0"
-	documentSummaryAgentID   = "agt_document_summary"
-	documentSummaryVersionID = "agv_document_summary_1_0_0"
-	codeGenerationAgentID    = "agt_code_generation"
-	codeGenerationVersionID  = "agv_code_generation_1_0_0"
-	workbenchBuilderAgentID  = "agt_workbench_builder"
+	fileAnalysisAgentID       = "agt_file_analysis"
+	fileAnalysisVersionID     = "agv_file_analysis_1_0_0"
+	tableCleanupAgentID       = "agt_table_cleanup"
+	tableCleanupVersionID     = "agv_table_cleanup_1_0_0"
+	dataQualityAgentID        = "agt_data_quality"
+	dataQualityVersionID      = "agv_data_quality_1_0_0"
+	reportChartAgentID        = "agt_report_chart"
+	reportChartVersionID      = "agv_report_chart_1_0_0"
+	documentSummaryAgentID    = "agt_document_summary"
+	documentSummaryVersionID  = "agv_document_summary_1_0_0"
+	codeGenerationAgentID     = "agt_code_generation"
+	codeGenerationVersionID   = "agv_code_generation_1_0_0"
+	workbenchBuilderAgentID   = "agt_workbench_builder"
 	workbenchBuilderVersionID = "agv_workbench_builder_1_0_0"
-	toolCodeExecute          = "code.execute"
-	toolFilesTransform       = "files.transform"
-	toolFilesBundle          = "files.bundle"
-	toolVersion1             = "1.0.0"
-	sandboxProfile           = "python-data-v1"
+	toolCodeExecute           = "code.execute"
+	toolFilesTransform        = "files.transform"
+	toolFilesBundle           = "files.bundle"
+	toolVersion1              = "1.0.0"
+	sandboxProfile            = "python-data-v1"
 )
 
 // Built-in agent behavior. Changing any text below changes the version digest, and publishing a
@@ -217,7 +217,7 @@ func builtinTools(created time.Time) []ToolVersion {
 		},
 		{
 			ID: toolFilesBundle + "@" + toolVersion1, Name: toolFilesBundle, Version: toolVersion1, Category: "artifact-packaging",
-			Summary: "将运行工作区内的源码、配置和说明打成可下载 ZIP。",
+			Summary:     "将运行工作区内的源码、配置和说明打成可下载 ZIP。",
 			Description: filesBundleDescription,
 			InputSchema: json.RawMessage(filesBundleInputSchema), OutputSchema: json.RawMessage(filesBundleOutputSchema),
 			Risk: "low", SideEffects: "creates-artifact", Retry: "idempotent",
@@ -263,6 +263,8 @@ func builtinAgents(created time.Time) []builtinAgentDefinition {
 		makeBuiltinAgent(created, documentSummaryAgentID, documentSummaryVersionID, "document-summary", "文档摘要 Agent", "从文本、Markdown、JSON 或表格中提取要点，生成来源明确的摘要和结构化结果。", documentSummaryPrompt, []string{"txt", "md", "json", "csv", "tsv", "xlsx"}, 240, 600, 10, 24),
 		makeBuiltinAgentWithTools(created, codeGenerationAgentID, codeGenerationVersionID, "code-generation", "通用代码生成 Agent", "以资深全栈工程纪律生成可运行代码、测试、配置、文档和可下载项目包。", codeGenerationPrompt, []ToolRef{{Name: toolCodeExecute, Version: toolVersion1}, {Name: toolFilesBundle, Version: toolVersion1}}, []string{"txt", "md", "json", "csv", "tsv", "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "java", "rs", "css", "yaml", "yml", "toml", "sql"}, 600, 1800, 24, 60),
 		makeBuiltinAgentWithTools(created, workbenchBuilderAgentID, workbenchBuilderVersionID, "workbench-builder", "工作台搭建师", "为学习备考、职场效率、自媒体创作、宝妈育儿和生活管理定制 PC/移动端数字工作台，并交付 ZIP。", workbenchBuilderPrompt, []ToolRef{{Name: toolCodeExecute, Version: toolVersion1}, {Name: toolFilesBundle, Version: toolVersion1}}, []string{"txt", "md", "json", "csv", "tsv"}, 600, 1800, 24, 60),
+		gpuComputeAgent(created),
+		codeAgent(created),
 	}
 }
 
@@ -303,6 +305,8 @@ func catalogToolName(modelName string) string {
 		return toolCodeExecute
 	case modelToolName(toolFilesTransform):
 		return toolFilesTransform
+	case modelToolName(toolFilesBundle):
+		return toolFilesBundle
 	}
 	return ""
 }

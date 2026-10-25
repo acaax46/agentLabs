@@ -1438,7 +1438,15 @@ components:
         capabilities:
           type: object
           required:
-            [modules, runs, codeExecution, maxUploadBytes, maxRunInputBytes, workerConcurrency]
+            [
+              modules,
+              runs,
+              codeExecution,
+              maxUploadBytes,
+              maxRunInputBytes,
+              workerConcurrency,
+              harnesses,
+            ]
           properties:
             modules:
               type: object
@@ -1456,6 +1464,10 @@ components:
             maxUploadBytes: { type: integer, format: int64 }
             maxRunInputBytes: { type: integer, format: int64 }
             workerConcurrency: { type: integer }
+            harnesses:
+              type: array
+              description: 此部署已知的执行引擎（Agent 循环），以及当前能否运行。
+              items: { $ref: '#/components/schemas/HarnessStatus' }
     Budget:
       type: object
       description: >-
@@ -1834,8 +1846,46 @@ components:
           items: { type: string }
         sandbox:
           type: string
-          description: 代码执行所需的沙箱类别。
+          description: 代码执行所需的沙箱类别，例如 `python-data-v1`、`python-cuda-v1`（含 CUDA 版 PyTorch）。
+        resourceProfiles:
+          type: array
+          items: { type: string }
+          description: >-
+            此版本只能使用的沙箱资源规格 id，按优先顺序排列；省略 `resourceProfile` 的运行取第一个当前节点可用的规格。
+            未声明时只能使用不含 GPU 的规格。
+          example: [gpu-rtx3070-laptop-4-8, gpu-l4-8-32]
+        harnesses:
+          type: array
+          items: { type: string, enum: [pi, opencode, codex, claude-code] }
+          description: >-
+            运行可选的执行引擎，第一个为默认：在沙箱内运行整个任务的代码 Agent CLI。未声明时由 AgentLab 内置循环执行。
+          example: [pi, opencode, codex, claude-code]
         createdAt: { type: string, format: date-time }
+    HarnessRef:
+      type: object
+      required: [id, name, version]
+      description: 运行受理时冻结的执行引擎。`builtin` 为 AgentLab 内置循环；其余为沙箱内的代码 Agent CLI 及其固定版本。
+      properties:
+        id: { type: string, enum: [builtin, pi, opencode, codex, claude-code] }
+        name: { type: string, example: pi }
+        version: { type: string, example: 1.4.0 }
+    HarnessStatus:
+      type: object
+      required: [id, name, version, protocol, description, available]
+      description: >-
+        一个执行引擎及此部署能否运行它。代码 Agent CLI 在无网络的沙箱内运行，模型请求只经平台计量通道：
+        宿主机校验请求、固定冻结的模型、限制输出 token、用真实凭据转发并记录供应商上报的用量，CLI 只看到本机回环地址上的转发器。
+      properties:
+        id: { type: string, enum: [builtin, pi, opencode, codex, claude-code] }
+        name: { type: string }
+        version: { type: string }
+        protocol:
+          type: string
+          enum: [chat, responses, messages]
+          description: 引擎使用的模型协议；所用连接须提供对应端点（/chat/completions、/responses 或 /messages），否则请求被拒绝且不计费。
+        description: { type: string }
+        available: { type: boolean }
+        reason: { type: string, description: 不可用时的原因。 }
     Agent:
       type: object
       required: [id, slug, name, description, status, latestVersionId, createdAt, latestVersion]
@@ -1976,7 +2026,9 @@ components:
     ResourceProfile:
       type: object
       required: [id, name, cpu, memoryMB, gpu]
-      description: 固定分配的沙箱规格，不代表实测利用率。
+      description: >-
+        固定分配的沙箱规格，不代表实测利用率。GPU 规格按卡型定价并独占整卡：执行节点只用通过真实 CUDA
+        计算检查、且型号与 `gpuModel` 逐词匹配的显卡运行它，代码在节点的 CUDA 镜像中执行。
       properties:
         id: { type: string, example: cpu-2-4 }
         name: { type: string }
@@ -1984,6 +2036,10 @@ components:
         memoryMB: { type: integer }
         gpu: { type: integer }
         gpuType: { type: string }
+        gpuModel:
+          type: string
+          description: 与执行节点报告的显卡名称逐词匹配的型号，例如 `RTX 3070 Laptop` 不匹配台式 RTX 3070，`L4` 不匹配 L40S。
+          example: RTX 3070 Laptop
     RunPrices:
       type: object
       required: [execution, tools]
@@ -2194,6 +2250,7 @@ components:
           result,
           outputArtifactIds,
           error,
+          harness,
         ]
       properties:
         id: { type: string, example: run_0123456789abcdef }
@@ -2221,6 +2278,7 @@ components:
             type: string,
             description: 受理时固定的本地 OCI 镜像 sha256 ID；后续标签变化不会替换该 Run 的镜像。,
           }
+        harness: { $ref: '#/components/schemas/HarnessRef' }
         resources:
           description: 代码沙箱的资源规格；受理时冻结。
           oneOf:
@@ -2276,8 +2334,16 @@ components:
         model: { type: string }
         resourceProfile:
           type: string
-          description: 代码沙箱的资源规格 id，取自 GET /billing/rates；省略取默认规格。规格有自己的每秒价格，GPU 规格目前只是预设、不能提交。
+          description: >-
+            代码沙箱的资源规格 id，取自 GET /billing/rates；省略取默认规格（版本声明了 `resourceProfiles` 时取其中第一个可用的）。
+            规格有自己的每秒价格。GPU 规格只在执行节点有通过 CUDA 检查的同型号显卡、且 Agent 版本允许时可用。
           example: cpu-1-1
+        harness:
+          type: string
+          enum: [builtin, pi, opencode, codex, claude-code]
+          description: >-
+            执行引擎，须在 Agent 版本的 `harnesses` 中；省略取版本默认。代码 Agent 会话期间容器一直占用所选规格，
+            沙箱秒含模型等待；模型请求次数上限为工具调用次数 + 6。
         input:
           type: object
           required: [instruction]

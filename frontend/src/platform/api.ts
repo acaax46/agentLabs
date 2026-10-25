@@ -57,6 +57,10 @@ export type AgentVersion = {
   outputSchema: unknown;
   inputFormats: string[];
   sandbox: string;
+  /** Allocations this version may use, in order of preference; absent means CPU profiles only. */
+  resourceProfiles?: string[];
+  /** Code-agent CLIs a run may choose, the first being the default; absent means the builtin loop. */
+  harnesses?: HarnessId[];
   createdAt: string;
   limits: {
     defaultExecutionSeconds: number;
@@ -120,6 +124,7 @@ export type ResourceProfile = {
   memoryMB: number;
   gpu: number;
   gpuType?: string;
+  gpuModel?: string;
 };
 export type RateSheet = {
   execution: Price | null;
@@ -151,8 +156,17 @@ export type Key = {
   ratePerMinute: number;
   createdAt: string;
 };
+export type HarnessId = 'builtin' | 'pi' | 'opencode' | 'codex' | 'claude-code';
+export type HarnessRef = { id: HarnessId; name: string; version: string };
+export type HarnessStatus = HarnessRef & {
+  protocol: 'chat' | 'responses' | 'messages';
+  description: string;
+  available: boolean;
+  reason?: string;
+};
 export type Run = {
   sandboxImage?: string;
+  harness?: HarnessRef;
   resources?: ResourceProfile | null;
   prices?: { model?: string; execution: string; sandbox?: string; tools: Record<string, string> };
   id: string;
@@ -344,6 +358,7 @@ export type Readiness = {
     maxUploadBytes: number;
     maxRunInputBytes: number;
     workerConcurrency: number;
+    harnesses?: HarnessStatus[];
   };
 };
 export type Overview = {

@@ -84,7 +84,7 @@ test('real ownership, revocation and cancellation preserve backend facts', async
     headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
     data: {
       projectId: project.id,
-      agentVersionId: agents.items[0]!.latestVersionId,
+      agentVersionId: agents.items.find((item) => item.id === 'agt_file_analysis')!.latestVersionId,
       modelConnectionId: model.connectionId,
       model: model.model,
       input: {

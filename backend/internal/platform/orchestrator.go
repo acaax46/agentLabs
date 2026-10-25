@@ -139,6 +139,9 @@ func (x *execution) drive(ctx context.Context) (outcome runOutcome) {
 	if x.client != nil && x.client.HTTP != nil {
 		defer x.client.HTTP.CloseIdleConnections()
 	}
+	if x.run.harness() != HarnessBuiltin {
+		return x.driveSession(ctx)
+	}
 	x.event(ctx, "info", "worker", "run.started", fmt.Sprintf("执行节点 %s 开始运行（第 %d 次尝试）。", x.s.cfg.WorkerID, x.run.Attempts), map[string]any{"attempt": x.run.Attempts})
 	if x.run.Attempts > 1 {
 		x.interruptedCalls(ctx)

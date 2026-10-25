@@ -275,7 +275,7 @@ async function scenario(server, log) {
   );
   const agents = (await ok(platform, 'GET', '/v1/agents', withKey)).items;
   const runBody = {
-    agentVersionId: agents[0].latestVersion.id,
+    agentVersionId: agents.find((agent) => agent.id === 'agt_file_analysis').latestVersion.id,
     modelConnectionId: modelOptions[0].connectionId,
     model: modelOptions[0].model,
     input: { instruction: '按地区汇总订单金额并画图', artifactIds: [ticket.id] },

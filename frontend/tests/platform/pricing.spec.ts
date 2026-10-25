@@ -94,7 +94,8 @@ test('模型价格、沙箱规格与 API 示例使用同一计费配置', async 
   );
   const allocation = page.getByLabel('沙箱资源规格');
   await expect(allocation).toHaveValue('cpu-2-4');
-  await expect(allocation.locator('option[value="gpu-l4-8-32"]')).toHaveAttribute('disabled', '');
+  // A version without a GPU policy is never offered a GPU allocation (see engines.spec.ts).
+  await expect(allocation.locator('option[value="gpu-l4-8-32"]')).toHaveCount(0);
   await page.getByLabel('任务指令', { exact: true }).fill('分析订单');
   await page.getByLabel('上传输入文件').setInputFiles({
     name: 'orders.csv',

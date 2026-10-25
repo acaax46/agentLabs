@@ -598,7 +598,10 @@ async function acceptance(server, log, channel) {
     },
   });
   const withKey = { bearer: issued.secret };
-  const agent = (await ok(platform, 'GET', '/v1/agents', withKey)).items[0];
+  // The file analysis agent, by id: the catalog also has GPU and code-agent templates.
+  const agent = (await ok(platform, 'GET', '/v1/agents', withKey)).items.find(
+    (item) => item.id === 'agt_file_analysis',
+  );
   const options = (await ok(platform, 'GET', '/v1/models', withKey)).items;
   const optionFor = (model) =>
     options.find((option) => option.model === model && option.source === 'platform');

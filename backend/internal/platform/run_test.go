@@ -1,8 +1,11 @@
 package platform
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -10,6 +13,66 @@ import (
 	"agentlab.local/backend/internal/platform/sandbox"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
+
+func TestCodeGenerationAgentBundlesGeneratedProject(t *testing.T) {
+	h := newHarness(t)
+	h.publishPrices()
+	project := h.project(10_000_000)
+	requirements := h.upload(h.alice, project.ID, "requirements.txt", "Build a small CLI that prints a greeting. Include tests and a README.\n")
+	h.runner.SetHandler(func(_ context.Context, request sandbox.Request) (sandbox.Result, error) {
+		return sandbox.Result{Outputs: []sandbox.File{
+			{Path: "src__main.py", Data: []byte("print('hello')\n")},
+			{Path: "tests__test_main.py", Data: []byte("def test_smoke():\n    assert True\n")},
+			{Path: "README.md", Data: []byte("# Generated CLI\n")},
+		}}, nil
+	})
+	h.model.push(
+		callTools(1000, 80, scriptedCall{"code_execute", map[string]any{"code": "print('generate')"}}),
+		callTools(800, 60, scriptedCall{"files_bundle", map[string]any{
+			"inputs":       []string{"src__main.py", "tests__test_main.py", "README.md"},
+			"output":       "generated-project.zip",
+			"archivePaths": map[string]string{"src__main.py": "src/main.py", "tests__test_main.py": "tests/test_main.py"},
+		}}),
+		say(`{"summary":"已生成并打包项目","findings":[],"outputs":[{"name":"generated-project.zip","description":"可下载项目包"}],"warnings":[]}`, 900, 80),
+	)
+	in := h.runInput(project.ID, requirements)
+	in.AgentVersionID = codeGenerationVersionID
+	in.Input.Instruction = "生成一个带测试和 README 的小型 CLI 项目，并打包为 ZIP。"
+	created, err := h.svc.CreateRun(context.Background(), h.alice, in, key())
+	h.must(err)
+	h.work()
+	run := h.run(created.ID)
+	if run.Status != RunSucceeded || len(run.OutputArtifactIDs) != 4 {
+		t.Fatalf("run = %s outputs=%v error=%+v", run.Status, run.OutputArtifactIDs, run.Error)
+	}
+	outputs, err := h.svc.ListArtifacts(context.Background(), h.alice, ListArtifactsQuery{ProjectID: project.ID, Kind: ArtifactOutput, RunID: created.ID})
+	h.must(err)
+	var bundle ArtifactView
+	for _, item := range outputs.Items {
+		if item.Name == "generated-project.zip" {
+			bundle = item
+		}
+	}
+	if bundle.ID == "" || bundle.Type != "zip" {
+		t.Fatalf("bundle artifact = %+v", bundle)
+	}
+	content, err := h.svc.OpenArtifact(context.Background(), h.alice, bundle.ID)
+	h.must(err)
+	data, err := io.ReadAll(content.Object)
+	_ = content.Object.Close()
+	h.must(err)
+	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	h.must(err)
+	seen := map[string]bool{}
+	for _, file := range archive.File {
+		seen[file.Name] = true
+	}
+	for _, name := range []string{"src/main.py", "tests/test_main.py", "README.md", "agentlab-bundle-manifest.json"} {
+		if !seen[name] {
+			t.Fatalf("bundle missing %s: %v", name, seen)
+		}
+	}
+}
 
 func TestAgentRunEndToEnd(t *testing.T) {
 	h := newHarness(t)

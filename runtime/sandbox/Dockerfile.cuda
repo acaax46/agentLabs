@@ -1,0 +1,27 @@
+# AgentLab GPU code sandbox image: the CPU sandbox (same runner, same data libraries) plus PyTorch
+# built for CUDA 11.8 and scikit-learn. CUDA 11.8 runs on NVIDIA drivers >= 520, which covers the
+# local RTX 3070 development card (driver 526.98, CUDA 12.0) without relying on CUDA minor-version
+# compatibility.
+# Build after the CPU image (pnpm build:sandbox):
+#   docker build -f runtime/sandbox/Dockerfile.cuda -t agentlab/sandbox-python-cuda:20261025 runtime/sandbox
+# Behind a mirror, override the sources without editing this file:
+#   --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+# The platform starts it exactly like the CPU image (no network, read-only root, tmpfs /work and
+# /tmp, no capabilities, non-root) and adds only --gpus device=<index> for a leased card. The image
+# holds no driver: the NVIDIA container runtime mounts the host driver at start.
+ARG SANDBOX_BASE=agentlab/sandbox-python:20261024
+FROM ${SANDBOX_BASE}
+
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118
+ARG PIP_INDEX_URL=https://pypi.org/simple
+USER root
+RUN pip install --index-url "${TORCH_INDEX_URL}" --extra-index-url "${PIP_INDEX_URL}" torch==2.7.1+cu118 \
+ && pip install --index-url "${PIP_INDEX_URL}" scikit-learn==1.5.2 \
+ && python3 -c "import torch, sklearn; assert torch.version.cuda == '11.8', torch.version.cuda"
+
+USER 10001:10001
+WORKDIR /work
+LABEL org.agentlab.sandbox-protocol="1" \
+      org.agentlab.accelerator="cuda-11.8" \
+      org.agentlab.libraries="torch-2.7.1+cu118 scikit-learn-1.5.2"
+ENTRYPOINT ["python3", "-I", "-B", "/opt/agentlab/runner.py"]

@@ -23,7 +23,7 @@ export function AgentsPage() {
     <>
       <PageHeader
         title="Agent"
-        description="选择平台预设的不可变版本，配置模型和文件后提交运行。用户自定义 Agent 的草稿与发布尚未开放。"
+        description="选择平台预设的不可变版本，配置模型和文件后提交运行。当前目录包含 8 个预设 Agent；用户自定义 Agent 的草稿与发布尚未开放。"
       />
       <QueryState pending={query.isPending} error={query.error} retry={query.refetch}>
         <div className="wb-callout wb-callout--info">
@@ -31,7 +31,8 @@ export function AgentsPage() {
           <div>
             <strong>当前提供平台预设 Agent</strong>
             <p>
-              每个版本都固定提示词摘要、工具版本、输入格式和运行限制。自定义 Agent
+              每个版本都固定提示词摘要、工具版本、输入格式和运行限制。代码生成与工作台搭建 Agent
+              会交付源码、说明和 ZIP；ZIP 需要用户自行部署。自定义 Agent
               需要草稿、发布、权限审批和版本回滚链路，当前尚未开放。
             </p>
           </div>
@@ -89,6 +90,12 @@ export function AgentsPage() {
   );
 }
 
+const protocolLabels: Record<string, string> = {
+  chat: 'Chat Completions',
+  responses: 'OpenAI Responses',
+  messages: 'Anthropic Messages',
+};
+
 export function AgentPlaygroundPage() {
   const { id = '' } = useParams();
   const platform = usePlatform();
@@ -126,9 +133,15 @@ export function AgentPlaygroundPage() {
     retry: false,
   });
   const [resourceId, setResourceId] = useState('');
+  // A version that lists profiles may use only those, in its order; any other version runs on CPU only.
+  const policy = version?.resourceProfiles ?? [];
+  const gpuOnly = policy.length > 0;
+  const allowedResources = (rates.data?.resources ?? [])
+    .filter((item) => (gpuOnly ? policy.includes(item.id) : !item.gpu))
+    .sort((a, b) => policy.indexOf(a.id) - policy.indexOf(b.id));
   const resource =
-    rates.data?.resources.find((item) => item.id === resourceId) ??
-    rates.data?.resources.find((item) => item.available);
+    allowedResources.find((item) => item.id === resourceId) ??
+    allowedResources.find((item) => item.available);
   const needsResource = rates.data?.execution?.sandboxBilling === 'separate';
   const [modelId, setModelId] = useState('');
   const options = models.data?.items ?? [];
@@ -155,6 +168,24 @@ export function AgentPlaygroundPage() {
     ) ?? [];
   const selectedFiles = readyFiles.filter((file) => selected.includes(file.id));
   const codeRequired = version?.tools.some((tool) => tool.name === 'code.execute');
+  // A version that lists code-agent CLIs lets the run choose one; any other runs the builtin loop.
+  const [harnessId, setHarnessId] = useState('');
+  const engines = platform.readiness?.capabilities.harnesses ?? [];
+  const versionEngines = version?.harnesses ?? [];
+  const engineOf = (id: string) => engines.find((item) => item.id === id);
+  const harness =
+    versionEngines.find((id) => id === harnessId) ??
+    versionEngines.find((id) => engineOf(id)?.available) ??
+    versionEngines[0];
+  const engine = harness ? engineOf(harness) : undefined;
+  const builtinEngine = engineOf('builtin');
+  const engineReason = !harness
+    ? ''
+    : !platform.readiness?.capabilities.codeExecution
+      ? (platform.readiness?.capabilities.codeExecutionReason ?? '代码执行不可用。')
+      : !engine?.available
+        ? (engine?.reason ?? '所选执行引擎在此部署不可用。')
+        : '';
   const disabledReason = !platform.project
     ? '请先创建项目。'
     : platform.project.status !== 'active'
@@ -171,9 +202,14 @@ export function AgentPlaygroundPage() {
                 ? '没有可运行的发布版本。'
                 : rates.isPending || rates.isError
                   ? '资源价格尚未读取成功，请刷新重试。'
-                  : needsResource && !resource?.available
-                    ? '当前没有可用的已定价沙箱规格。'
-                    : '';
+                  : gpuOnly && !needsResource
+                    ? '此版本只能使用按资源计费的 GPU 规格；需管理员先发布资源另列的托管价格。'
+                    : needsResource && !resource?.available
+                      ? gpuOnly
+                        ? (allowedResources.find((item) => item.reason)?.reason ??
+                          '当前没有可用的 GPU 规格。')
+                        : '当前没有可用的已定价沙箱规格。'
+                      : engineReason;
   const upload = useMutation({
     mutationFn: async (file: File) => {
       setUploads((current) => [
@@ -254,6 +290,7 @@ export function AgentPlaygroundPage() {
         modelConnectionId: model!.connectionId,
         model: model!.model,
         ...(needsResource && resource ? { resourceProfile: resource.id } : {}),
+        ...(harness ? { harness } : {}),
         input: {
           instruction: instruction.trim(),
           artifactIds: selectedFiles.map((file) => file.id),
@@ -280,6 +317,7 @@ export function AgentPlaygroundPage() {
     modelConnectionId: model?.connectionId,
     model: model?.model,
     ...(needsResource && resource ? { resourceProfile: resource.id } : {}),
+    ...(harness ? { harness } : {}),
     input: {
       instruction: instruction || '分析输入文件并输出结果',
       artifactIds: selectedFiles.map((file) => file.id),
@@ -326,6 +364,8 @@ export function AgentPlaygroundPage() {
                           setVersionId(event.target.value);
                           setSeconds('');
                           setSelected([]);
+                          setResourceId('');
+                          setHarnessId('');
                         }}
                       >
                         {versions.map((item) => (
@@ -334,6 +374,52 @@ export function AgentPlaygroundPage() {
                           </option>
                         ))}
                       </select>
+                    </label>
+                    <label className="wb-field">
+                      <span>执行引擎</span>
+                      {harness ? (
+                        <select
+                          value={harness}
+                          aria-describedby="engine-help"
+                          onChange={(event) => setHarnessId(event.target.value)}
+                        >
+                          {versionEngines.map((id) => {
+                            const item = engineOf(id);
+                            return (
+                              <option key={id} value={id} disabled={!item?.available}>
+                                {item ? `${item.name} ${item.version}` : id} ·{' '}
+                                {protocolLabels[item?.protocol ?? ''] ?? '协议未知'}
+                                {item && !item.available ? `（${item.reason}）` : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      ) : (
+                        <select value="builtin" disabled aria-describedby="engine-help">
+                          <option value="builtin">
+                            {builtinEngine?.name ?? 'AgentLab 内置循环'}（此版本固定）
+                          </option>
+                        </select>
+                      )}
+                      <small id="engine-help">
+                        {harness ? (
+                          <>
+                            {engine?.description}
+                            CLI
+                            在无网络的沙箱内运行，模型请求只经平台计量通道：平台固定所选模型、限制输出并记录供应商用量，沙箱内没有真实密钥。引擎在沙箱内的工具步骤由
+                            CLI 自报，显示在事件时间线。
+                          </>
+                        ) : (
+                          <>
+                            此版本固定由平台在沙箱外驱动模型，工具调用逐次记录。可选
+                            pi、OpenCode、Codex CLI 或 Claude Code 的版本见{' '}
+                            <Link className="wb-text-link" to="/agents/agt_code_agent">
+                              代码 Agent（可选引擎）
+                            </Link>
+                            。
+                          </>
+                        )}
+                      </small>
                     </label>
                     <QueryState
                       pending={models.isPending}
@@ -388,7 +474,7 @@ export function AgentPlaygroundPage() {
                             value={resource?.id ?? ''}
                             onChange={(event) => setResourceId(event.target.value)}
                           >
-                            {rates.data?.resources.map((item) => (
+                            {allowedResources.map((item) => (
                               <option key={item.id} value={item.id} disabled={!item.available}>
                                 {item.name} · {item.cpu} vCPU / {item.memoryMB / 1024} GiB /{' '}
                                 {item.gpu ? item.gpuType : '无 GPU'} ·{' '}
@@ -400,7 +486,12 @@ export function AgentPlaygroundPage() {
                             ))}
                           </select>
                           <small>
-                            按每次隔离执行时长向上取整秒计费，含启动与回收；模型等待与排队不计沙箱资源费。
+                            {gpuOnly
+                              ? '此版本只能使用 GPU 规格：代码在 CUDA 镜像中运行，每次代码执行独占整卡，GPU 按卡型计价。'
+                              : '此版本只使用不含 GPU 的规格。'}
+                            {harness
+                              ? '代码 Agent 会话期间容器一直占用所选规格：按容器从启动到移除的时长向上取整秒计费，含模型等待，不含排队。'
+                              : '按每次隔离执行时长向上取整秒计费，含启动与回收；模型等待与排队不计沙箱资源费。'}
                           </small>
                         </label>
                       ) : (
@@ -532,7 +623,7 @@ export function AgentPlaygroundPage() {
                         name="limits.maxToolCalls"
                         required
                         error={submit.error}
-                        help={`允许 1–${version?.limits.maxToolCalls} 次；执行时限允许 1–${version?.limits.maxExecutionSeconds} 秒。`}
+                        help={`允许 1–${version?.limits.maxToolCalls} 次；执行时限允许 1–${version?.limits.maxExecutionSeconds} 秒。${harness ? '代码 Agent 引擎按模型请求次数限制，上限为该值 + 6。' : ''}`}
                       >
                         <input
                           type="number"

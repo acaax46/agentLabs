@@ -40,6 +40,8 @@ type DockerConfig struct {
 	GPUs []int
 	// GPUImage is the CUDA image for allocations with a GPU; it is required exactly when GPUs is set.
 	GPUImage string
+	// AgentImage holds the code-agent CLIs and the session driver; empty turns sessions off.
+	AgentImage string
 }
 
 // gpuProbeTTL keeps the CUDA check, which starts a large image, away from every readiness probe.
@@ -75,6 +77,7 @@ type Docker struct {
 	gpuHeld     map[int]bool
 	gpuFreed    chan struct{}
 	gpuProbedAt time.Time
+	gpuChecking bool
 	gpus        []GPU
 	gpuReason   string
 }
@@ -119,6 +122,8 @@ func NewDocker(cfg DockerConfig) (*Docker, error) {
 		return nil, fmt.Errorf("sandbox: GPU devices and the GPU image must be configured together")
 	case cfg.GPUImage != "" && !imagePattern.MatchString(cfg.GPUImage):
 		return nil, fmt.Errorf("sandbox: GPU image reference is malformed")
+	case cfg.AgentImage != "" && !imagePattern.MatchString(cfg.AgentImage):
+		return nil, fmt.Errorf("sandbox: code-agent image reference is malformed")
 	}
 	seen := map[int]bool{}
 	for _, index := range cfg.GPUs {
@@ -143,6 +148,31 @@ func (d *Docker) isolation() string {
 	}
 }
 
+// lockedDown is the part of every sandbox command line that makes it a sandbox: a fresh disposable
+// container without network, capabilities or host mounts, read-only root, bounded memory, CPU and
+// processes, a non-root user and tmpfs scratch space. Code executions and sessions share it.
+func (d *Docker) lockedDown(name, runID string, cpus float64, memory, pids int, workMode string, tmpMB int) []string {
+	label := labelPattern.ReplaceAllString(runID, "_")
+	if label == "" || len(label) > 64 {
+		label = "unknown"
+	}
+	return []string{
+		"run", "--rm", "--pull", "never", "-i", "--name", name,
+		"--label", "org.agentlab.sandbox=1", "--label", "org.agentlab.run=" + label,
+		"--network", "none",
+		"--read-only",
+		"--cap-drop", "ALL",
+		"--security-opt", "no-new-privileges:true",
+		"--pids-limit", strconv.Itoa(pids),
+		"--memory", fmt.Sprintf("%dm", memory), "--memory-swap", fmt.Sprintf("%dm", memory),
+		"--cpus", strconv.FormatFloat(cpus, 'f', 2, 64),
+		"--user", fmt.Sprintf("%d:%d", d.cfg.UID, d.cfg.GID),
+		"--tmpfs", fmt.Sprintf("/work:%s,size=%dm,uid=%d,gid=%d,mode=0700", workMode, d.cfg.WorkMB, d.cfg.UID, d.cfg.GID),
+		"--tmpfs", fmt.Sprintf("/tmp:rw,nosuid,nodev,noexec,size=%dm,uid=%d,gid=%d,mode=0700", tmpMB, d.cfg.UID, d.cfg.GID),
+		"-e", "HOME=/tmp", "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "PYTHONUNBUFFERED=1",
+	}
+}
+
 // arguments builds the container command line. devices are the leased GPU indexes, if any: they
 // add --gpus and nothing else, so a GPU sandbox keeps every restriction of a CPU one.
 func (d *Docker) arguments(name string, request Request, devices ...int) []string {
@@ -150,25 +180,7 @@ func (d *Docker) arguments(name string, request Request, devices ...int) []strin
 	if request.Resources.CPUs > 0 {
 		cpus, memory = request.Resources.CPUs, request.Resources.MemoryMB
 	}
-	label := labelPattern.ReplaceAllString(request.RunID, "_")
-	if label == "" || len(label) > 64 {
-		label = "unknown"
-	}
-	args := []string{
-		"run", "--rm", "--pull", "never", "-i", "--name", name,
-		"--label", "org.agentlab.sandbox=1", "--label", "org.agentlab.run=" + label,
-		"--network", "none",
-		"--read-only",
-		"--cap-drop", "ALL",
-		"--security-opt", "no-new-privileges:true",
-		"--pids-limit", strconv.Itoa(d.cfg.PidsLimit),
-		"--memory", fmt.Sprintf("%dm", memory), "--memory-swap", fmt.Sprintf("%dm", memory),
-		"--cpus", strconv.FormatFloat(cpus, 'f', 2, 64),
-		"--user", fmt.Sprintf("%d:%d", d.cfg.UID, d.cfg.GID),
-		"--tmpfs", fmt.Sprintf("/work:rw,nosuid,nodev,noexec,size=%dm,uid=%d,gid=%d,mode=0700", d.cfg.WorkMB, d.cfg.UID, d.cfg.GID),
-		"--tmpfs", fmt.Sprintf("/tmp:rw,nosuid,nodev,noexec,size=64m,uid=%d,gid=%d,mode=0700", d.cfg.UID, d.cfg.GID),
-		"-e", "HOME=/tmp", "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "PYTHONUNBUFFERED=1",
-	}
+	args := d.lockedDown(name, request.RunID, cpus, memory, d.cfg.PidsLimit, "rw,nosuid,nodev,noexec", 64)
 	if d.cfg.Runtime != "" {
 		args = append(args, "--runtime", d.cfg.Runtime)
 	}
@@ -371,7 +383,7 @@ func (d *Docker) Probe(ctx context.Context) (Info, error) {
 		err = fmt.Errorf("%w: readiness execution returned exit=%d output=%q", ErrUnavailable, result.ExitCode, truncateText(result.Stdout+result.Stderr, 200))
 	}
 	if err == nil {
-		info.GPUs, info.GPUReason = d.gpuInventory(ctx)
+		info.GPUs, info.GPUReason = d.gpuInventory(ctx, false)
 		if d.cfg.GPUImage != "" {
 			info.GPUImage = d.cfg.GPUImage
 			if id, e := d.imageID(ctx, d.cfg.GPUImage); e == nil {
@@ -406,30 +418,64 @@ print(json.dumps(out))
 `
 
 // gpuInventory reports the configured devices that pass a real CUDA computation, each in its own
-// sandbox exactly as a customer's code would run. A leased device is not disturbed: it keeps the
-// result it had when it was leased, which was healthy.
-func (d *Docker) gpuInventory(ctx context.Context) ([]GPU, string) {
+// sandbox exactly as a customer's code would run. The check starts a large image, so a caller that
+// cannot wait (readiness, admission) gets the last result, or "in progress" before the first one,
+// while the check runs in the background. wait=true blocks for a current result, which an execution
+// about to lease a card needs.
+func (d *Docker) gpuInventory(ctx context.Context, wait bool) ([]GPU, string) {
 	if len(d.cfg.GPUs) == 0 {
 		return nil, "此执行节点没有开放 GPU。"
 	}
-	cached := func() ([]GPU, string, bool) {
-		d.gpuMu.Lock()
-		defer d.gpuMu.Unlock()
-		ttl := gpuProbeTTL
-		if len(d.gpus) == 0 {
-			ttl = gpuProbeFailedTTL
-		}
-		if d.gpuProbedAt.IsZero() || time.Since(d.gpuProbedAt) >= ttl {
-			return nil, "", false
-		}
-		return append([]GPU(nil), d.gpus...), d.gpuReason, true
-	}
-	if gpus, reason, ok := cached(); ok {
+	gpus, reason, fresh, known := d.gpuCached()
+	if fresh {
 		return gpus, reason
 	}
+	if wait {
+		return d.checkGPUs(ctx)
+	}
+	d.gpuMu.Lock()
+	if !d.gpuChecking {
+		d.gpuChecking = true
+		go func() {
+			background, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			d.checkGPUs(background)
+			d.gpuMu.Lock()
+			d.gpuChecking = false
+			d.gpuMu.Unlock()
+		}()
+	}
+	d.gpuMu.Unlock()
+	if known {
+		return gpus, reason
+	}
+	return nil, "GPU 正在进行 CUDA 实际运行检查，请稍后刷新。"
+}
+
+// CheckGPUs waits for a current CUDA check, for operators and tests that need a definite answer.
+func (d *Docker) CheckGPUs(ctx context.Context) ([]GPU, string) { return d.gpuInventory(ctx, true) }
+
+// gpuCached returns the last check: fresh within its time to live, known if there was one at all.
+func (d *Docker) gpuCached() (gpus []GPU, reason string, fresh, known bool) {
+	d.gpuMu.Lock()
+	defer d.gpuMu.Unlock()
+	if d.gpuProbedAt.IsZero() {
+		return nil, "", false, false
+	}
+	ttl := gpuProbeTTL
+	if len(d.gpus) == 0 {
+		ttl = gpuProbeFailedTTL
+	}
+	return append([]GPU(nil), d.gpus...), d.gpuReason, time.Since(d.gpuProbedAt) < ttl, true
+}
+
+// checkGPUs checks every idle configured device; one check runs at a time and callers that waited
+// for it reuse its result. A leased device is not disturbed: it keeps the result it had when it was
+// leased, which was healthy.
+func (d *Docker) checkGPUs(ctx context.Context) ([]GPU, string) {
 	d.gpuProbeMu.Lock()
 	defer d.gpuProbeMu.Unlock()
-	if gpus, reason, ok := cached(); ok {
+	if gpus, reason, fresh, _ := d.gpuCached(); fresh {
 		return gpus, reason
 	}
 	d.gpuMu.Lock()
@@ -533,7 +579,7 @@ func (d *Docker) checkGPU(ctx context.Context, index int) (GPU, error) {
 // waiting while they are busy. It fails with ErrNoCapacity, before anything starts, when the node
 // has no such healthy device or none frees up in time.
 func (d *Docker) leaseGPUs(ctx context.Context, resources Resources) ([]int, func(), error) {
-	gpus, reason := d.gpuInventory(ctx)
+	gpus, reason := d.gpuInventory(ctx, true)
 	if (Info{GPUs: gpus}).MatchingGPUs(resources.GPUModel) < resources.GPU {
 		return nil, nil, fmt.Errorf("%w: no healthy %q device on this node (%s)", ErrNoCapacity, resources.GPUModel, reason)
 	}
