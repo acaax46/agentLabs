@@ -15,8 +15,10 @@ AgentLab 的新方向是托管 Agent 执行与 Tools API 平台：用户通过�
 - [黑色极客视觉规范](DESIGN.md)：目标配色、布局、控件、运行与账单交互。
 - [实施现状与迁移边界](docs/implementation-status.md)：已有代码与未来目标的区别。
 - [本地启动与 MVP 视频脚本](docs/local-start-and-mvp-video.md)：从本机启动到录制最小真实主链路的逐步说明。
-- 当前服务端目录提供 9 个平台预设 Agent：文件分析、表格清洗、数据质量检查、报表与图表、文档摘要、通用代码生成、工作台搭建师、GPU 计算和代码 Agent；GPU Agent 需要本机 CUDA 条件，代码 Agent 可选择已固定版本的执行引擎，用户自定义 Agent 的草稿/发布链路仍未开放。
-- [共用开发规则](AGENTS.md)：Codex / OpenCode 的项目入口。
+- [黑客松演示与协作](docs/hackathon-guide.md)：能演示什么、不能宣称什么、队友适合补哪些文档。
+- [预设 Agent 与工具目录](docs/preset-agents.md)：9 个平台预设 Agent、3 个工具版本，以及演示时怎么选。
+- [当前代码地图](docs/code-map.md)：工作台、平台后端、两套 API 和改完跑什么。
+- [共用开发规则](AGENTS.md) / [如何提变更](CONTRIBUTING.md)：Codex / OpenCode 入口与提交时的检查。
 - [品牌状态](assets/brand.json) / [目标设计变量](assets/design-tokens.target.json)：仅元数据，本轮未写入前端 CSS。
 
 旧教育商业闭环、桌面架构与分散设计文档已移除，由上述入口统一替代。当前 OpenAPI 和程序启动方式仍以现有代码为准。
@@ -29,7 +31,7 @@ AgentLab 的新方向是托管 Agent 执行与 Tools API 平台：用户通过�
 | backend/          | Go 本地 API、桌面绑定、账户、资料、执行与计量原型             |
 | contracts/        | 本地 /api/v1 契约（openapi.yaml）与托管平台 /v1 契约          |
 | runtime/          | Linux guest、OpenSandbox、CLI/MCP 的开发验证资产              |
-| docs/             | 总设计、实施现状与本地启动/演示说明                            |
+| docs/             | 总设计、实施现状、演示说明、预设目录与代码地图                  |
 | assets/           | 品牌元数据、目标 tokens 和历史图片素材                        |
 | scripts/          | 现有开发、构建与检查编排                                      |
 | compose.test.yaml | 本地 MongoDB 单节点副本集                                  |

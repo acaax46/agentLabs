@@ -1,8 +1,8 @@
 # AgentLab 本地启动与 MVP 最小使用视频
 
-本文说明如何在 Windows 本机启动 AgentLab，并录制一段可复核 MVP 主链路的最小使用视频。命令均从仓库根目录 E:/code/agentLabs 执行；其他系统把 PowerShell 写法替换为对应 shell 即可。
+本文说明如何在 Windows 本机启动 AgentLab，并录制一段可复核 MVP 主链路的最小使用视频。命令均从仓库根目录执行；其他系统把 PowerShell 写法替换为对应 shell 即可。评委讲解口径见 [黑客松演示与协作](hackathon-guide.md)。
 
-本文按当前代码事实（2026-10-25）编写：浏览器工作台使用 MongoDB、真实模型连接和 Docker 沙箱完成文件分析 Run；服务端同时提供 8 个预设 Agent，包括通用代码生成和工作台搭建师。云端多租户、对象存储、KMS、支付和 SLA 不在本地 MVP 验收范围。边界以 README.md、docs/implementation-status.md 和 DESIGN.md 为准。
+本文按当前代码事实（2026-10-25）编写：浏览器工作台使用 MongoDB、真实模型连接和 Docker 沙箱完成文件分析 Run；服务端同时提供 9 个预设 Agent，包括通用代码生成、工作台搭建师、GPU 计算和代码 Agent。云端多租户、对象存储、KMS、支付和 SLA 不在本地 MVP 验收范围。边界以 README.md、docs/implementation-status.md 和 DESIGN.md 为准。预设清单见 [预设 Agent 与工具目录](preset-agents.md)。
 
 ## 1. 录制目标与边界
 
@@ -84,7 +84,7 @@ pnpm seed:demo
 - db:up 启动 compose.test.yaml 中的 MongoDB 单节点副本集，默认监听 127.0.0.1:27018。
 - build:sandbox 构建真实 Docker 文件分析沙箱；首次执行需要联网下载基础镜像和 Python 依赖。
 - seed:demo 显式创建本地演示账号，同时保留旧资料演示数据；它不会伪造平台 Run、用量或消费记录。
-- 内置 8 个 Agent（文件分析、表格清洗、数据质量检查、报表与图表、文档摘要、通用代码生成、工作台搭建师、GPU 计算），以及 files.transform、code.execute、files.bundle 1.0.0，会在平台服务初始化时幂等发布，不需要手工插入 Agent。
+- 内置 9 个 Agent（文件分析、表格清洗、数据质量检查、报表与图表、文档摘要、通用代码生成、工作台搭建师、GPU 计算、代码 Agent），以及 files.transform、code.execute、files.bundle 1.0.0，会在平台服务初始化时幂等发布，不需要手工插入 Agent。GPU 与代码 Agent 需要额外镜像，最小视频不必演示它们。
 - 代码生成和工作台搭建 Agent 的 ZIP 是项目产物；它包含源码、说明和摘要 manifest，需要用户自行部署到目标环境，不会由本地 Agent 服务自动发布到公网。
 
 ### 4.2 API
