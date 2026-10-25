@@ -18,7 +18,7 @@ Vite 代理 `/api`、`/v1` 和 `/health` 到 `AGENTLAB_API_PORT`（默认 8787�
 
 界面回归：`pnpm test:e2e:platform`。覆盖 1440px、1024px、390px 与 200% 等效视口，按接口结构验证分页、断线续传、键盘、上传校验、密钥保存确认、权限能力、Markdown 隔离、精确金额与费用来源。此套使用受控接口，不计入真实主链路验收。结果写入 `.cache/p0-ui-results`。
 
-`pnpm test:e2e` 是当前产品的真实认证/连接回归（独立 MongoDB 测试库、受控 `/models` 端点，无真实模型消费），同时验证原生 Chromium 200% 标签页缩放。原生缩放需要支持临时扩展的完整 Chromium；可用 `AGENTLAB_ZOOM_BROWSER_PATH` 指定已安装的 Chromium，普通 Chrome 的发行版可能禁用此扩展启动方式。CI 安装 Playwright Chromium 后运行。旧认证/连接用例保留为 `*.legacy.spec.ts`，旧业务用例不作为当前产品门槛。
+`pnpm test:e2e` 是当前产品的真实认证/连接回归（独立 MongoDB 测试库、受控 `/models` 端点，无真实模型消费），同时验证原生 Chromium 200% 标签页缩放。原生缩放需要支持临时扩展的完整 Chromium；可用 `AGENTLAB_ZOOM_BROWSER_PATH` 指定已安装的 Chromium，普通 Chrome 的发行版可能禁用此扩展启动方式。旧认证/连接用例保留为 `*.legacy.spec.ts`，旧业务用例不作为当前产品门槛。
 
 P1 定向回归：`pnpm test:e2e:p1`，结果写入 `.cache/p1-ui-results`。如测试端口占用，可指定 `AGENTLAB_PLATFORM_TEST_WEB_PORT`。格式检查使用根目录提供的 Prettier。
 

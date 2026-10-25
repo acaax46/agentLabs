@@ -6,7 +6,7 @@ AgentLab 的新方向是托管 Agent 执行与 Tools API 平台：用户通过�
 
 本机验收记录在 `assets/p0-acceptance.json` 与 `assets/design-validation.json`；实际范围、未知指标和未实现能力以实施现状为准。测试结果不等于商业支付、供应商最终账单或云端安全认证。
 
-按文档完整 MVP 条款复核，本机主链路与前端接入已完成；远端 CI 结果需在推送后的 GitHub Actions 运行后确认。真实模型质量、云端多租户、商业支付与 SLA 不属于本机通过范围；逐项状态见 [MVP 核心需求复核](docs/implementation-status.md#mvp-核心需求复核2026-10-24)。
+按文档完整 MVP 条款复核，本机主链路与前端接入已完成；验证只在本地运行，不依赖远程 CI。真实模型质量、云端多租户、商业支付与 SLA 不属于本机通过范围；逐项状态见 [MVP 核心需求复核](docs/implementation-status.md#mvp-核心需求复核2026-10-24)。
 
 ## 文档入口
 
@@ -32,7 +32,7 @@ AgentLab 的新方向是托管 Agent 执行与 Tools API 平台：用户通过�
 | docs/             | 总设计、实施现状与本地启动/演示说明                            |
 | assets/           | 品牌元数据、目标 tokens 和历史图片素材                        |
 | scripts/          | 现有开发、构建与检查编排                                      |
-| compose.test.yaml | 本地/CI MongoDB 单节点副本集                                  |
+| compose.test.yaml | 本地 MongoDB 单节点副本集                                  |
 
 Hydro/、OpenSandbox/ 是被忽略的上游参考目录；.cache/、.tools/ 和 build/ 为本地工具或产物，不作为产品规范。
 
