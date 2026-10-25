@@ -1,0 +1,17 @@
+# Conceptual mapping from Hydro JudgeSettings; not a drop-in Hydro deployment.
+stdio_size: 1m
+memoryMax: 256m
+processLimit: 32
+parallelism: 2
+singleTaskParallelism: 1
+testcases_max: 100
+total_time_limit: 60
+rerun: 0
+detail: none
+# AgentLab adds a separate wall-clock limit and workload network isolation.
+wall_time_seconds: 3
+network: none
+read_only_root: true
+capabilities: []
+privileged: false
+host_mounts: false

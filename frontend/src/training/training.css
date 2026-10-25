@@ -1,0 +1,303 @@
+.training-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 180px max-content;
+  gap: var(--al-space-4);
+  align-items: end;
+  margin-bottom: var(--al-space-5);
+  padding: var(--al-space-5);
+  border: 1px solid var(--al-color-border);
+  border-radius: var(--al-radius-card);
+  background: var(--al-color-surface);
+  box-shadow: var(--al-shadow-card);
+}
+
+.training-list-panel {
+  overflow: hidden;
+  border: 1px solid var(--al-color-border);
+  border-radius: var(--al-radius-card);
+  background: var(--al-color-surface);
+  box-shadow: var(--al-shadow-card);
+}
+
+.training-table .training-tags {
+  flex-wrap: nowrap;
+}
+
+.training-table td {
+  vertical-align: middle;
+}
+
+.training-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--al-space-5);
+}
+
+.training-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--al-space-3);
+  padding: var(--al-space-5);
+  border: 1px solid var(--al-color-border);
+  border-radius: var(--al-radius-card);
+  background: var(--al-color-surface);
+  box-shadow: var(--al-shadow-card);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform var(--al-duration-fast) var(--al-ease-bounce),
+    box-shadow var(--al-duration-fast) var(--al-ease);
+}
+
+.training-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--al-shadow-raised);
+  text-decoration: none;
+}
+
+.training-card h2 {
+  margin: 0;
+  font-size: var(--al-text-xl);
+  color: var(--al-color-text-strong);
+}
+
+.training-card p {
+  margin: 0;
+  color: var(--al-color-text-muted);
+  font-size: var(--al-text-sm);
+}
+
+.training-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--al-space-3);
+}
+
+.training-card-top .icon {
+  width: 34px;
+  height: 34px;
+}
+
+.training-card-action {
+  margin-top: auto;
+  color: var(--al-color-primary-deep);
+  font-size: var(--al-text-sm);
+  font-weight: var(--al-weight-bold);
+}
+
+.training-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--al-space-2);
+}
+
+.training-tags span,
+.training-tags a {
+  padding: 3px 9px;
+  border: 1px solid var(--al-color-border);
+  border-radius: var(--al-radius-pill);
+  background: var(--al-color-surface-subtle);
+  color: var(--al-color-text-muted);
+  font-size: var(--al-text-xs);
+  font-weight: var(--al-weight-semibold);
+  text-decoration: none;
+}
+
+.training-tags a {
+  color: var(--al-color-primary-deep);
+}
+
+.difficulty-badge {
+  padding: 4px 10px;
+  border-radius: var(--al-radius-pill);
+  font-size: var(--al-text-xs);
+  font-weight: var(--al-weight-bold);
+}
+
+.difficulty-badge.easy {
+  background: var(--al-color-success-subtle);
+  color: var(--al-color-success-text);
+}
+
+.difficulty-badge.medium {
+  background: var(--al-color-gold-subtle);
+  color: var(--al-color-gold-text);
+}
+
+.difficulty-badge.hard {
+  background: var(--al-color-coral-subtle);
+  color: var(--al-color-coral-text);
+}
+
+.training-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: var(--al-space-5);
+  align-items: start;
+}
+
+.training-statement h3 {
+  margin-top: var(--al-space-5);
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--al-radius-pill);
+  background: var(--al-color-surface-subtle);
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--al-color-mint);
+}
+
+.course-reader {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: var(--al-space-5);
+  align-items: start;
+}
+
+.course-outline {
+  position: sticky;
+  top: 92px;
+  min-width: 0;
+  padding: var(--al-space-4);
+  border: 1px solid var(--al-color-border);
+  border-radius: var(--al-radius-card);
+  background: var(--al-color-surface);
+  box-shadow: var(--al-shadow-card);
+}
+
+.course-progress {
+  display: grid;
+  gap: var(--al-space-2);
+  margin-bottom: var(--al-space-4);
+  font-size: var(--al-text-sm);
+}
+
+.course-outline ol {
+  display: grid;
+  gap: var(--al-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.course-outline button {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--al-space-2);
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--al-radius-sm);
+  background: transparent;
+  color: var(--al-color-text);
+  font-size: var(--al-text-sm);
+  font-weight: var(--al-weight-semibold);
+  text-align: start;
+}
+
+.course-outline button:hover {
+  background: var(--al-color-surface-subtle);
+}
+
+.course-outline button.active {
+  border-color: var(--al-color-primary-border);
+  background: var(--al-color-primary-subtle);
+  color: var(--al-color-primary-deep);
+}
+
+.course-outline button small {
+  flex: 0 0 auto;
+  color: var(--al-color-success-text);
+  font-size: var(--al-text-2xs);
+}
+
+.course-section {
+  min-width: 0;
+  padding: var(--al-space-6);
+  border: 1px solid var(--al-color-border);
+  border-radius: var(--al-radius-card);
+  background: var(--al-color-surface);
+  box-shadow: var(--al-shadow-card);
+}
+
+.course-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--al-space-3);
+  margin-bottom: var(--al-space-3);
+}
+
+.course-section > h2 {
+  margin-bottom: var(--al-space-4);
+}
+
+.course-practice {
+  margin-top: var(--al-space-6);
+  padding-top: var(--al-space-4);
+  border-top: 1px solid var(--al-color-border);
+}
+
+.course-practice h3 {
+  margin-bottom: var(--al-space-3);
+}
+
+.course-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--al-space-3);
+  margin-top: var(--al-space-6);
+  padding-top: var(--al-space-4);
+  border-top: 1px solid var(--al-color-border);
+}
+
+.course-actions .button:last-child {
+  margin-inline-start: auto;
+}
+
+@media (max-width: 1199px) {
+  .training-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .training-grid,
+  .training-detail,
+  .course-reader {
+    grid-template-columns: 1fr;
+  }
+
+  .training-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .course-outline {
+    position: static;
+  }
+}
+
+@media (max-width: 600px) {
+  .training-filters,
+  .training-card,
+  .course-section {
+    padding: var(--al-space-4);
+  }
+
+  .course-actions .button:last-child {
+    margin-inline-start: 0;
+  }
+}

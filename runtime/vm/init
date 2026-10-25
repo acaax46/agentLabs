@@ -1,0 +1,7 @@
+#!/bin/sh
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys
+echo AGENTLAB_VM_BOOT_OK
+/bin/busybox cat /proc/version
+echo AGENTLAB_VM_NO_NETWORK_NO_HOST_MOUNTS
+/bin/busybox poweroff -f

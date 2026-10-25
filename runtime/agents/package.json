@@ -1,0 +1,12 @@
+{
+  "name": "agentlab-runtime-agents",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pinned CLI tools; contains no accounts or provider credentials",
+  "dependencies": {
+    "@openai/codex": "0.164.0",
+    "@anthropic-ai/claude-code": "2.1.309",
+    "opencode-ai": "1.19.4",
+    "@earendil-works/pi-coding-agent": "1.4.0"
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "catalogVersion": 1,
+  "entries": [
+    {
+      "id": "luogu-problem-a48zhang",
+      "displayName": "洛谷题目 MCP",
+      "source": "https://github.com/a48zhang/luogu-mcp",
+      "catalogListingVersion": "1.0.0",
+      "sourceVersion": "cb6386b31e798c5638a1199a3bfe6f2f48cd1a96",
+      "transport": "streamable-http",
+      "endpoint": "https://workers-playground-steep-brook-cdfb.alphazhang689.workers.dev/mcp",
+      "credentialMode": "none",
+      "trustZone": "remote-unverified",
+      "defaultPolicy": "read-only",
+      "tools": {
+        "get_problem": {
+          "risk": "read",
+          "approval": "none",
+          "resource": "public-problem-by-id",
+          "resultLimitBytes": 262144
+        }
+      },
+      "capabilities": { "tools": true, "resources": false, "prompts": false },
+      "notes": [
+        "目录说明列出一个只读 get_problem 工具；远程 Worker 不是 AgentLab 控制的基础设施。",
+        "题面和工具结果均按不可信外部文本处理；不允许其调用宿主控制面。",
+        "生产启用前需要固定响应 schema、来源可用性、内容许可和超时/限流策略。"
+      ]
+    },
+    {
+      "id": "leetcode-jinzcdev-cn",
+      "displayName": "力扣 MCP（中国站）",
+      "source": "https://github.com/jinzcdev/leetcode-mcp-server",
+      "sourceVersion": "f95454778f876b7846b3027bf8eb80300685f5dc",
+      "package": "@jinzcdev/leetcode-mcp-server@1.4.0",
+      "transport": "stdio-or-streamable-http",
+      "endpoint": "http://127.0.0.1:3000/mcp",
+      "credentialMode": "host-vault-session-cookie",
+      "trustZone": "connector-worker",
+      "defaultPolicy": "read-only",
+      "auth": {
+        "site": "cn",
+        "secretRef": "leetcode-cn-session",
+        "secretFields": ["LEETCODE_SESSION", "csrftoken"],
+        "audience": "leetcode.cn",
+        "agentSeesSecret": false
+      },
+      "tools": {
+        "get_daily_challenge": { "risk": "read", "approval": "none", "resource": "public-problem" },
+        "get_problem": { "risk": "read", "approval": "none", "resource": "public-problem" },
+        "search_problems": {
+          "risk": "read",
+          "approval": "none",
+          "resource": "public-problem",
+          "resultLimit": 50
+        },
+        "get_problem_solution": {
+          "risk": "read",
+          "approval": "none",
+          "resource": "public-solution",
+          "resultLimitBytes": 262144
+        },
+        "run_code": {
+          "risk": "external-execution",
+          "approval": "confirm",
+          "resource": "current-user-judge",
+          "idempotency": "provider-request-or-unknown"
+        },
+        "submit_solution": {
+          "risk": "external-write",
+          "approval": "confirm",
+          "resource": "current-user-submission",
+          "idempotency": "unknown-on-timeout"
+        },
+        "create_note": {
+          "risk": "external-write",
+          "approval": "confirm",
+          "resource": "current-user-note"
+        },
+        "update_note": {
+          "risk": "external-write",
+          "approval": "confirm",
+          "resource": "current-user-note"
+        },
+        "create_problem_list": {
+          "risk": "external-write",
+          "approval": "confirm",
+          "resource": "current-user-list"
+        }
+      },
+      "capabilities": { "tools": true, "resources": true, "prompts": false },
+      "notes": [
+        "公开题目和题解工具默认只读；提交、运行代码、笔记和题单写操作必须由宿主确认。",
+        "Session Cookie 只能交给受信连接器进程，不放入 Agent 环境变量、命令行、日志或 MCP 响应。",
+        "上游实现使用轮询 /check/；断线时结果可能未知，不自动重发 submit_solution。",
+        "首次接入需要锁定 npm lockfile、Node 版本和 leetcode-query 行为，并进行站点兼容测试。"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+.code-editor {
+  min-width: 0;
+  max-height: 72vh;
+  overflow: hidden;
+  border: 1px solid var(--al-color-border-strong);
+  border-radius: var(--al-radius-control);
+  background: var(--al-color-workspace-bg);
+  box-shadow: inset 0 1px 3px rgb(22 42 40 / 24%);
+}
+
+.code-editor:focus-within {
+  outline: 3px solid var(--al-color-focus);
+  outline-offset: 3px;
+}
+
+.code-editor-loading {
+  display: grid;
+  min-height: 320px;
+  place-items: center;
+  padding: var(--al-space-5);
+  border: 1px solid var(--al-color-border-strong);
+  border-radius: var(--al-radius-control);
+  background: var(--al-color-workspace-bg);
+  color: var(--al-color-workspace-muted);
+  font-size: var(--al-text-sm);
+}
+
+.code-editor .monaco-editor,
+.code-editor .monaco-editor-background,
+.code-editor .monaco-editor .overflow-guard {
+  border-radius: var(--al-radius-control);
+}
+
+.code-editor .monaco-editor .scroll-decoration {
+  box-shadow: none;
+}

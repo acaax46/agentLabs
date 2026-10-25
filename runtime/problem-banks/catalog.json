@@ -1,0 +1,17 @@
+{
+  "sources": [
+    {
+      "id": "hydro-ybtbas",
+      "name": "一本通编程启蒙",
+      "url": "https://hydro.ac/ybtbas.zip",
+      "localArchive": "downloads/ybtbas.zip",
+      "problemCount": 480,
+      "format": "Hydro problem zip",
+      "judgeType": "remote_judge",
+      "offlineTestDataIncluded": false,
+      "usageEvidence": "README.txt states this feature is permanently free to use; requires Hydro >=4.10.2 and hydroac-client.",
+      "redistributionLicense": "Not specified as a general open content license; preserve archive instructions and attribution.",
+      "importMode": "reference-only-until-remote-judge-adapter"
+    }
+  ]
+}

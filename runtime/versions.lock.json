@@ -1,0 +1,40 @@
+{
+  "purpose": "local-development-validation",
+  "architecture": "linux/amd64",
+  "opensandbox": {
+    "version": "1.1.1",
+    "server": "opensandbox/server@sha256:bcd5f264101262cebfa7e1ff9cd0424403e42f31a6596e4364cf90d8cb5c936b",
+    "execd": "opensandbox/execd@sha256:cda2bc35409bbf57561599b316cafb899598f7dce671332e7ceda14eb1cfeded",
+    "sourceReviewCommit": "e1eb32ef93db878e08e07a397f211870aa14566a",
+    "releaseCommit": "6150f3642bbf9db47f06d6c42ca9c7bfae06b3e9"
+  },
+  "defaultNodeBase": "node:22.20.0-bookworm-slim@sha256:b21fe589dfbe5cc39365d0544b9be3f1f33f55f3c86c87a76ff65a02f8f5848e",
+  "agents": {
+    "@openai/codex": "0.164.0",
+    "@anthropic-ai/claude-code": "2.1.309",
+    "opencode-ai": "1.19.4",
+    "@earendil-works/pi-coding-agent": "1.4.0"
+  },
+  "ccSwitch": "4.0.18",
+  "validatedAgentImage": {
+    "tag": "agentlab/agents:validated-20261023",
+    "imageId": "sha256:45bc0195d0f8c693ec5ef25bdd2b9dd43471132ddad5a985ffdd246032b15ec8",
+    "node": "22.23.3",
+    "base": "agentlab/local-node:22.23.3-bookworm",
+    "purpose": "development-only; validated independently of the default Node base"
+  },
+  "hydroReference": {
+    "repository": "https://github.com/hydro-dev/Hydro.git",
+    "commit": "89b8f8b5088890abc470a691a5e9a43f03d3a2c8",
+    "license": "AGPL-3.0",
+    "role": "reference-source-only"
+  },
+  "validatedStudentGuest": {
+    "tag": "agentlab/student-guest:20261024",
+    "imageId": "sha256:8d28422f8f80b2ad1f17384c580296534c8b576a12d506875cc6abaf1efbc105",
+    "protocol": 1,
+    "executionPlane": "OpenSandbox execd 1.1.1 inside a real Linux VM",
+    "accelerator": "tcg",
+    "purpose": "locally verified classroom Python execution"
+  }
+}

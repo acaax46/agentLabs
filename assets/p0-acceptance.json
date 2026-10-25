@@ -1,0 +1,202 @@
+{
+  "verifiedOn": "2026-10-24T15:12:54.698Z",
+  "runs": [
+    {
+      "projectId": "prj_de9d656672560d1a83227027e1883403",
+      "projectName": "P0 zoom-200 1792853954067",
+      "runId": "run_23d2de466cdaa043bb7aed293d2de268",
+      "status": "cancelled",
+      "modelSource": "platform",
+      "trigger": "workbench",
+      "billingStatus": "settled",
+      "currency": "CNY",
+      "costMicros": "0",
+      "toolCalls": [],
+      "artifacts": []
+    },
+    {
+      "projectId": "prj_de9d656672560d1a83227027e1883403",
+      "projectName": "P0 zoom-200 1792853954067",
+      "runId": "run_f69ccc32e7b0b51592e5f632d4cb7c28",
+      "status": "succeeded",
+      "modelSource": "platform",
+      "trigger": "workbench",
+      "billingStatus": "settled",
+      "currency": "CNY",
+      "costMicros": "10163",
+      "toolCalls": [
+        {
+          "name": "code.execute",
+          "status": "succeeded",
+          "sandbox": "docker/container"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": "art_28c12fe292e93ba8cf1356c19ccb101b",
+          "name": "summary.png",
+          "sha256": "d2ea1ce0eee94b1fe66284114afdaabc3660a809a356e1e8782a7f6b9f3a7a36",
+          "status": "ready"
+        },
+        {
+          "id": "art_49aea9e3f990cad9dd2fff665db60b8f",
+          "name": "summary.csv",
+          "sha256": "b158e6be8ed107b7f93a8d262487e856a9a996111009ae3534ab4688471f7125",
+          "status": "ready"
+        }
+      ]
+    },
+    {
+      "projectId": "prj_0c75186923e2f94909918e0e7cddaf7f",
+      "projectName": "P0 mobile 1792853954067",
+      "runId": "run_8df9f98633f0b3c49c3200191fdf6250",
+      "status": "succeeded",
+      "modelSource": "platform",
+      "trigger": "workbench",
+      "billingStatus": "settled",
+      "currency": "CNY",
+      "costMicros": "10257",
+      "toolCalls": [
+        {
+          "name": "code.execute",
+          "status": "succeeded",
+          "sandbox": "docker/container"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": "art_38e3d684717311790176fa9ba5d34398",
+          "name": "summary.png",
+          "sha256": "6ce38d3636f912179398b507698a40b3782dc6d0c398081d772c9431dc53c347",
+          "status": "ready"
+        },
+        {
+          "id": "art_39641383329c60f3fcbecbf260661cf9",
+          "name": "summary.csv",
+          "sha256": "b158e6be8ed107b7f93a8d262487e856a9a996111009ae3534ab4688471f7125",
+          "status": "ready"
+        }
+      ]
+    },
+    {
+      "projectId": "prj_3fd9e1da2f59048eaee5e985459ea48d",
+      "projectName": "P0 tablet 1792853954067",
+      "runId": "run_7352eafdb65f28f4a7e584775a0f557f",
+      "status": "succeeded",
+      "modelSource": "platform",
+      "trigger": "workbench",
+      "billingStatus": "settled",
+      "currency": "CNY",
+      "costMicros": "10059",
+      "toolCalls": [
+        {
+          "name": "code.execute",
+          "status": "succeeded",
+          "sandbox": "docker/container"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": "art_c2827e01f856b73c975f2aa5258b247c",
+          "name": "summary.png",
+          "sha256": "6ce38d3636f912179398b507698a40b3782dc6d0c398081d772c9431dc53c347",
+          "status": "ready"
+        },
+        {
+          "id": "art_bc8ca323e421a2e6ce0ade3f8d0a2797",
+          "name": "summary.csv",
+          "sha256": "b158e6be8ed107b7f93a8d262487e856a9a996111009ae3534ab4688471f7125",
+          "status": "ready"
+        }
+      ]
+    },
+    {
+      "projectId": "prj_fd6be2be2233fecdd28cd0a53acce22f",
+      "projectName": "P0 desktop 1792853787253",
+      "runId": "run_f87bb99018a9af146bb6f3794dedc9d0",
+      "status": "succeeded",
+      "modelSource": "byok",
+      "trigger": "api",
+      "billingStatus": "settled",
+      "currency": "CNY",
+      "costMicros": "7000",
+      "toolCalls": [
+        {
+          "name": "code.execute",
+          "status": "succeeded",
+          "sandbox": "docker/container"
+        },
+        {
+          "name": "files.transform",
+          "status": "succeeded",
+          "sandbox": "native"
+        },
+        {
+          "name": "code.execute",
+          "status": "succeeded",
+          "sandbox": "docker/container"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": "art_d8ac7dc55d9c4dbfc4d457fbfb2ddca5",
+          "name": "summary-api.csv",
+          "sha256": "7a91c3097e4025bd7884740885970844161f7c5f9ad558dcde5372bf979132df",
+          "status": "ready"
+        }
+      ]
+    },
+    {
+      "projectId": "prj_fd6be2be2233fecdd28cd0a53acce22f",
+      "projectName": "P0 desktop 1792853787253",
+      "runId": "run_bc33cd850f514db97436bab890952778",
+      "status": "succeeded",
+      "modelSource": "platform",
+      "trigger": "workbench",
+      "billingStatus": "settled",
+      "currency": "CNY",
+      "costMicros": "8928",
+      "toolCalls": [
+        {
+          "name": "code.execute",
+          "status": "succeeded",
+          "sandbox": "docker/container"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": "art_d0fb54e96d3e8cf689fb290f41ddc9b3",
+          "name": "summary.png",
+          "sha256": "e313dfdb9e5da08a76081c8880f444dc3adedccf2113b52249f3da63030f5d6d",
+          "status": "ready"
+        },
+        {
+          "id": "art_21737e5f81b5cd463a79adf9be577f00",
+          "name": "summary.csv",
+          "sha256": "b158e6be8ed107b7f93a8d262487e856a9a996111009ae3534ab4688471f7125",
+          "status": "ready"
+        }
+      ]
+    }
+  ],
+  "checks": {
+    "checkedOn": "2026-10-24",
+    "viewportWidths": [1440, 1024, 390],
+    "zoom": "200% equivalent CSS viewport with device scale 2",
+    "realBackend": true,
+    "realModels": ["platform", "byok"],
+    "isolation": "docker/container",
+    "externalApi": true,
+    "ownershipRevocationCancellation": true,
+    "contrastPairs": 16,
+    "tokenCount": 77,
+    "evidence": "p0-acceptance.json"
+  },
+  "boundaries": {
+    "commercialPayment": false,
+    "cloudMultiTenant": false,
+    "objectStorage": false,
+    "storageCharge": "unknown-without-metering-evidence",
+    "newLogoDelivered": false
+  }
+}

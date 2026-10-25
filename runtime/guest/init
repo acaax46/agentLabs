@@ -1,0 +1,13 @@
+#!/bin/sh
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys
+/bin/busybox mount -t devtmpfs devtmpfs /dev
+/bin/busybox mkdir -p /dev/pts /run /tmp
+/bin/busybox mount -t devpts devpts /dev/pts
+/bin/busybox mount -t tmpfs -o size=64m,nosuid,nodev tmpfs /tmp
+/bin/busybox chmod 1777 /tmp
+/bin/busybox chmod 600 /dev/ttyS0 /dev/console
+/bin/busybox stty -F /dev/ttyS0 raw -echo
+/bin/busybox ip link set lo up
+/agentlab-guest
+/bin/busybox poweroff -f

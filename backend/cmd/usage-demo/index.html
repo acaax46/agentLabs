@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AgentLab · 用量与恢复验证</title>
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>AgentLab · 开发验证</p>
+        <h1>在同一个窗口恢复任务</h1>
+        <p>
+          本页使用固定的本地测试响应和测试价格，不调用真实模型，不产生实际账单。重启演示服务会清空记录。
+        </p>
+      </header>
+      <section>
+        <h2>选择验证场景</h2>
+        <div class="actions">
+          <button id="start">模拟发送前失败</button
+          ><button id="unknown" class="secondary">模拟流中断</button>
+        </div>
+        <p id="error" role="alert"></p>
+      </section>
+      <section>
+        <h2>当前窗口与额度</h2>
+        <p id="window"></p>
+        <div class="metrics" id="metrics"></div>
+      </section>
+      <section>
+        <h2>尝试记录</h2>
+        <p id="status" role="status">尚未开始。</p>
+        <div id="attempts"></div>
+        <button id="retry" disabled>在本窗口重试</button>
+        <p id="retry-note"></p>
+      </section>
+      <section>
+        <h2>结算记录</h2>
+        <p>缓存输入从总输入中划分，推理 Token 包含在输出中，均不重复收费。</p>
+        <div id="ledger"></div>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

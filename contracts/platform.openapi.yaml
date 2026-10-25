@@ -1,0 +1,2683 @@
+openapi: 3.1.0
+info:
+  title: AgentLab 托管 Agent 与 Tools API
+  version: 1.0.0-mvp
+  description: |
+    托管 Agent 执行与 Tools API 的后端 MVP 契约。实现在 `backend/internal/platform`，
+    由 `pnpm check:platform-contract` 对真实响应逐项核对。它与 `openapi.yaml`（本地 `/api/v1` 原型）相互独立，
+    前端类型请从本文件生成，不要手工改写 `frontend/src/api/generated.ts`。
+
+    ## 两个入口，同一组操作
+
+    | 入口 | 谁用 | 身份 |
+    | --- | --- | --- |
+    | `/v1` | 开发者的后端、脚本、SDK | `Authorization: Bearer al_live_…`（API Key） |
+    | `/api/v1/platform` | 工作台（同源代理） | 登录会话 Cookie `agentlab_session` |
+
+    `/v1` 可由 `AGENTLAB_PLATFORM_LISTEN_ADDR` 单独监听用于公网，该监听**只认 API Key，不读取 Cookie**。
+    本地开发服务同时在两个前缀下接受两种身份。响应中的 URL（上传地址、下载链接）已带上调用方使用的前缀，
+    客户端原样请求即可；`Location` 头是相对引用，按请求 URL 解析。
+
+    ## 通用规则
+
+    * **金额**：整数微单位（1 元 = 1 000 000），JSON 中一律为**十进制字符串**，并伴随 `currency`。
+      未知的金额与用量为 `null`，估算值的 `billingStatus` 为 `estimated`，绝不显示为 `settled`。
+    * **时间**：RFC 3339（UTC）。
+    * **写入幂等**：创建类 POST（项目、密钥、文件、运行、工具调用）必须带 `Idempotency-Key`（8–128 位，字母数字与 `_ . : -`）。
+      同一调用者、同一操作、同一键且请求内容相同，返回原资源；内容不同返回 `409 IDEMPOTENCY_KEY_REUSED`。
+      回执保留 24 小时。已发出的上游请求结果未知时平台不会盲目重发或退款，见运行状态 `unknown`。
+    * **会话写请求**：使用 Cookie 的非 GET 请求还必须带 `X-AgentLab-Request: platform`，否则 `403 PRODUCT_HEADER_REQUIRED`。API Key 请求不需要。
+    * **分页**：`limit`（默认 25，最大 100）与 `cursor`（来自上一页的 `nextCursor`，不透明）。游标基于 (时间, id) 的键集，翻页期间新增数据不会造成重复或遗漏。
+    * **范围（scope）**：API Key 只能访问自己绑定的项目，每个操作需要下表中的 scope；不满足返回 `403 FORBIDDEN_SCOPE`。
+      访问不属于自己的资源一律是 `404 NOT_FOUND`（不区分“不存在”和“无权访问”）。
+      项目、密钥、预算、连接授权与价格管理只对登录用户开放（API Key 得到 `403 FORBIDDEN`）。
+    * **限流**：每个 API Key 有 `ratePerMinute`（令牌桶，突发容量为 max(5, 每分钟额度/10)）。超出返回 `429 RATE_LIMITED` 与 `Retry-After`（秒）。
+      限流在每个 API 副本内独立计算，多副本部署时总额度约为副本数倍，不是全局精确限流。
+    * **错误**：见 `ErrorBody`。`code` 是稳定契约，`message` 面向人且可能变化；每个响应都带 `X-Request-ID`，与 `requestId` 一致。
+    * **缓存**：所有响应 `Cache-Control: no-store`；文件内容为 `private, no-store`。
+    * **运行事件**：`GET …/events` 默认返回 JSON 页；`Accept: text/event-stream` 时返回 SSE，以 `event: end` 结束。
+      事件 id 是服务端序号，断线后用 `Last-Event-ID` 或 `?after=` 从任一副本无缝续传。
+
+    | 操作 | 需要的 scope |
+    | --- | --- |
+    | 创建/取消运行、查看模型 | `runs:write`（查看模型也接受 `runs:read`） |
+    | 查看运行、事件、运行内工具调用、概览 | `runs:read` |
+    | 上传文件 | `files:write` |
+    | 读取、预览、下载文件 | `artifacts:read` |
+    | 用量、账本 | `usage:read` |
+    | 独立调用工具、查看/取消工具调用 | `tools:call` |
+    | 目录（Agent、工具）、`/me`、`/capabilities` | 任意有效身份 |
+  contact:
+    name: AgentLab
+servers:
+  - url: /v1
+    description: 机器接口（API Key）
+  - url: /api/v1/platform
+    description: 工作台接口（会话 Cookie）
+security:
+  - ApiKey: []
+  - Session: []
+tags:
+  - name: Meta
+    description: 能力与身份
+  - name: Projects
+    description: 项目、预算与连接授权
+  - name: Keys
+    description: API Key
+  - name: Catalog
+    description: Agent 与工具目录
+  - name: Files
+    description: 上传与产物
+  - name: Runs
+    description: Agent 运行
+  - name: ToolCalls
+    description: 独立工具调用
+  - name: Billing
+    description: 用量与账本
+  - name: Admin
+    description: 平台管理员
+paths:
+  /capabilities:
+    get:
+      tags: [Meta]
+      operationId: getCapabilities
+      summary: 后端能力与就绪状态
+      description: 前端据此决定可以提供哪些功能。沙箱不可用时 `codeExecution=false` 并给出原因，不会假装可用。
+      responses:
+        '200':
+          description: 就绪报告。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /me:
+    get:
+      tags: [Meta]
+      operationId: getMe
+      summary: 当前身份
+      responses:
+        '200':
+          description: 当前调用者。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: 项目列表
+      description: 用户看到自己所属的项目；`all=true` 仅对平台管理员生效，列出租户内全部项目。API Key 只会看到自己绑定的项目。
+      parameters:
+        - in: query
+          name: all
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 一页项目。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: 创建项目
+      description: 调用者成为项目所有者。给出 `budgetMicros` 时同时开通预算账户。仅登录用户。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: 新项目；重复请求返回同一项目。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: 项目详情
+      responses:
+        '200':
+          description: 项目、调用者的角色与预算。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Projects]
+      operationId: updateProject
+      summary: 修改项目
+      description: 需要当前 `version`；版本过期返回 `409 VERSION_CONFLICT`，不会覆盖他人的修改。暂停的项目不能提交运行或上传文件。仅项目所有者。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: 更新后的项目。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{id}/budget:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    put:
+      tags: [Projects]
+      operationId: setProjectBudget
+      summary: 设置预算与并发上限
+      description: |
+        `version` 取自 `Project.budget.version`（尚无预算时为 0）；预算有独立版本，因为运行会改变额度而不改变项目。
+        省略 `maxConcurrentRuns` 表示保持当前值（新预算用平台默认值）；显式给出的值必须在 1–1000，0 会被拒绝。仅项目所有者。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetBudgetRequest'
+      responses:
+        '200':
+          description: 更新后的预算。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{id}/connections:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Projects]
+      operationId: listProjectConnections
+      summary: 已授权给项目的连接
+      description: 平台共享连接对所有项目始终可用，不在此列。仅登录用户。
+      responses:
+        '200':
+          description: 授权列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{id}/connections/{connectionId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - in: path
+        name: connectionId
+        required: true
+        schema: { type: string }
+    put:
+      tags: [Projects]
+      operationId: grantProjectConnection
+      summary: 授权项目使用自己的连接
+      description: 只能授权自己名下的连接，且调用者必须是项目所有者。共享连接无需授权（`409 ALREADY_AVAILABLE`）。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      responses:
+        '200':
+          description: 授权记录。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Grant'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Projects]
+      operationId: revokeProjectConnection
+      summary: 取消授权
+      description: 幂等：授权已不存在时同样返回 204。已发出的请求不会被撤回。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      responses:
+        '204':
+          description: 已取消。
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /connections/{id}/projects:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Projects]
+      operationId: listConnectionProjects
+      summary: 使用某连接的项目
+      responses:
+        '200':
+          description: 授权列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /models:
+    get:
+      tags: [Projects]
+      operationId: listModels
+      summary: 项目可用的模型
+      description: |
+        含不可用的模型及原因（`reason`），例如连接未验证或已过期。平台供模的模型需要已发布的价格才可用；
+        自带密钥（`byok`）的模型费用由客户向供应商自行支付，不需要平台价格（`priced=false`）。
+        API Key 需要 `runs:write` 或 `runs:read`。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      responses:
+        '200':
+          description: 模型选项，可用的排在前面。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelOptionList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api-keys:
+    get:
+      tags: [Keys]
+      operationId: listApiKeys
+      summary: 项目的 API Key
+      description: 只返回前缀，不返回密钥。仅登录用户。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 一页密钥，最新的在前。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Keys]
+      operationId: createApiKey
+      summary: 签发 API Key
+      description: |
+        密钥明文 `secret` **只在这一次响应中出现**，之后任何接口都不会再返回；重复发送同一请求得到 `409 KEY_ALREADY_ISSUED`，需撤销后重新签发。
+        每个项目最多 20 个有效密钥。响应带 `Cache-Control: no-store`。仅项目所有者。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: 新密钥，含一次性明文。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedApiKey'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /api-keys/{id}/revoke:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Keys]
+      operationId: revokeApiKey
+      summary: 撤销 API Key
+      description: 立即生效，所有副本不再接受该密钥。请求体被忽略。仅项目所有者。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      responses:
+        '200':
+          description: 撤销后的密钥。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /agents:
+    get:
+      tags: [Catalog]
+      operationId: listAgents
+      summary: 已发布的 Agent
+      description: 响应只含提示词摘要（`promptDigest`），不含提示词本身。
+      responses:
+        '200':
+          description: Agent 列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /agents/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Catalog]
+      operationId: getAgent
+      summary: Agent 与它的全部版本
+      responses:
+        '200':
+          description: Agent 及版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDetail'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /agent-versions/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Catalog]
+      operationId: getAgentVersion
+      summary: Agent 版本
+      description: 已发布版本不可变；运行记录的是创建运行时的版本。
+      responses:
+        '200':
+          description: 版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentVersion'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tools:
+    get:
+      tags: [Catalog]
+      operationId: listTools
+      summary: 可用工具及其价格
+      responses:
+        '200':
+          description: 工具列表，含当前有效价格。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /tools/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema: { type: string, example: files.transform }
+    get:
+      tags: [Catalog]
+      operationId: getTool
+      summary: 工具定义
+      parameters:
+        - in: query
+          name: version
+          description: 省略时取最新可用版本。
+          schema: { type: string }
+      responses:
+        '200':
+          description: 工具及价格。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tool'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tools/{name}/calls:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema: { type: string, example: files.transform }
+    post:
+      tags: [ToolCalls]
+      operationId: createToolCall
+      summary: 独立调用一个工具（Tools API）
+      description: |
+        不经过 Agent，直接执行工具。长任务立即返回 `202` 与可查询的调用；用 `GET /tool-calls/{id}` 或其事件流获取结果。
+        费用按工具计量单位计（`code.execute` 按沙箱运行的秒，`files.transform` 按文件数），不收取托管执行费。
+        需要 `tools:call`。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateToolCallRequest'
+      responses:
+        '202':
+          description: 已受理；重复请求返回同一调用。
+          headers:
+            Location:
+              description: 相对引用 `tool-calls/{id}`。
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolCall'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /tool-calls:
+    get:
+      tags: [ToolCalls]
+      operationId: listToolCalls
+      summary: 独立工具调用列表
+      description: 只含独立调用；Agent 运行内部的工具调用见 `GET /runs/{id}/tool-calls`。需要 `tools:call`。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 一页调用，最新的在前。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolCallPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tool-calls/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ToolCallId'
+    get:
+      tags: [ToolCalls]
+      operationId: getToolCall
+      summary: 工具调用详情
+      description: 完成后 `result` 含工具返回的内容。运行的 id 在此返回 404，反之亦然。需要 `tools:call`。
+      responses:
+        '200':
+          description: 调用。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolCall'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tool-calls/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ToolCallId'
+    post:
+      tags: [ToolCalls]
+      operationId: cancelToolCall
+      summary: 停止工具调用
+      description: |
+        排队中的调用立即停止且不产生费用；已在执行的调用在当前步骤结束后停止，已发生的用量与外部效果不会撤回。
+        工具调用没有 `cancelled` 状态：被停止的调用状态为 `failed`，`error.code` 为 `CANCELLED`。请求体被忽略。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      responses:
+        '202':
+          description: 停止请求后的调用。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolCall'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tool-calls/{id}/events:
+    parameters:
+      - $ref: '#/components/parameters/ToolCallId'
+    get:
+      tags: [ToolCalls]
+      operationId: listToolCallEvents
+      summary: 工具调用的事件
+      description: 与 `GET /runs/{id}/events` 相同的 JSON 页或 SSE 流。
+      parameters:
+        - $ref: '#/components/parameters/After'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/LastEventId'
+      responses:
+        '200': { $ref: '#/components/responses/Events' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /files:
+    post:
+      tags: [Files]
+      operationId: initUpload
+      summary: 声明一个要上传的文件
+      description: |
+        两步上传：先声明名称、大小（与可选的 SHA-256），再向返回的 `uploadUrl` 以 `PUT` 发送字节。
+        `uploadUrl` 已含调用方使用的前缀。声明有效期 30 分钟；超过期限的未完成上传会被清理。
+        文件名会被规范化（路径、控制字符被去除）。需要 `files:write`。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitUploadRequest'
+      responses:
+        '201':
+          description: 待上传的文件记录与上传地址。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadTicket'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /files/{id}/content:
+    parameters:
+      - $ref: '#/components/parameters/ArtifactId'
+    put:
+      tags: [Files]
+      operationId: uploadFileContent
+      summary: 上传文件内容
+      description: |
+        请求体是原始字节（`Content-Type` 不限，建议 `application/octet-stream`），流式写入存储。
+        实际大小与声明不符、超过上限或格式与扩展名不符时拒绝。完成后文件为 `ready`。
+        对已完成的文件重复上传返回当前记录；并发上传同一文件得到 `409 UPLOAD_IN_PROGRESS`。需要 `files:write`。
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: 上传完成的文件。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artifact'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410':
+          description: 上传声明已过期（`UPLOAD_EXPIRED`）。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /files/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ArtifactId'
+    get:
+      tags: [Files]
+      operationId: getFile
+      summary: 文件记录（同 /artifacts/{id}）
+      responses:
+        '200':
+          description: 文件。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artifact'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /artifacts:
+    get:
+      tags: [Files]
+      operationId: listArtifacts
+      summary: 项目的文件
+      description: 输入与输出文件，最新的在前。已被同名新文件取代的旧版本默认隐藏。需要 `artifacts:read`。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - in: query
+          name: kind
+          schema: { type: string, enum: [input, output] }
+        - in: query
+          name: runId
+          description: 只列出某次运行产生的文件。
+          schema: { type: string }
+        - in: query
+          name: includeSuperseded
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 一页文件。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /artifacts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ArtifactId'
+    get:
+      tags: [Files]
+      operationId: getArtifact
+      summary: 文件记录
+      description: 过期的文件保留记录（`status=expired`），内容已删除。需要 `artifacts:read`。
+      responses:
+        '200':
+          description: 文件。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artifact'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /artifacts/{id}/content:
+    parameters:
+      - $ref: '#/components/parameters/ArtifactId'
+    get:
+      tags: [Files]
+      operationId: getArtifactContent
+      summary: 文件内容
+      description: |
+        支持 `Range`。png/csv/tsv/json/txt/md 以 `inline` 提供，其余一律 `attachment` 且为 `application/octet-stream`；
+        永不按 HTML 提供。响应带 `X-Content-Type-Options: nosniff` 与 `Content-Security-Policy: default-src 'none'; sandbox`。
+        过期文件返回 `410 ARTIFACT_EXPIRED`。需要 `artifacts:read`。
+      parameters:
+        - in: query
+          name: download
+          description: 为 `1` 时强制 `attachment`。
+          schema: { type: string, enum: ['1'] }
+        - in: header
+          name: Range
+          schema: { type: string, example: bytes=0-1023 }
+      responses:
+        '200':
+          description: 文件字节。
+          content:
+            '*/*':
+              schema: { type: string, format: binary }
+        '206':
+          description: 部分内容。
+          content:
+            '*/*':
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410':
+          description: 文件已超过保留期（`ARTIFACT_EXPIRED`）。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+  /artifacts/{id}/preview:
+    parameters:
+      - $ref: '#/components/parameters/ArtifactId'
+    get:
+      tags: [Files]
+      operationId: previewArtifact
+      summary: 文件预览
+      description: 表格给出列与前若干行，文本与 JSON 给出截断后的文本；图片和二进制只给元数据。需要 `artifacts:read`。
+      responses:
+        '200':
+          description: 预览。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preview'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410':
+          description: 文件已超过保留期。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+  /artifacts/{id}/download-link:
+    parameters:
+      - $ref: '#/components/parameters/ArtifactId'
+    post:
+      tags: [Files]
+      operationId: createDownloadLink
+      summary: 生成短期下载链接
+      description: 链接本身就是凭据，可交给没有账号的人或浏览器下载；默认 5 分钟有效，链接被改动即失效。请求体被忽略。需要 `artifacts:read`。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      responses:
+        '200':
+          description: 链接，已带调用方使用的前缀。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadLink'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410':
+          description: 文件已超过保留期。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+  /download/{token}:
+    parameters:
+      - in: path
+        name: token
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Files]
+      operationId: downloadByLink
+      summary: 用签名链接下载
+      description: 无需 Cookie 或 API Key。始终以 `attachment` 提供。链接无效或过期返回 `403 DOWNLOAD_LINK_INVALID`。
+      security: []
+      responses:
+        '200':
+          description: 文件字节。
+          content:
+            '*/*':
+              schema: { type: string, format: binary }
+        '403':
+          description: 链接无效或已过期。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+        '410':
+          description: 文件已超过保留期。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+  /runs:
+    get:
+      tags: [Runs]
+      operationId: listRuns
+      summary: 运行列表
+      description: 只含 Agent 运行，最新的在前。需要 `runs:read`。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - in: query
+          name: status
+          description: 逗号分隔的状态过滤，如 `succeeded,failed`。
+          schema: { type: string }
+        - in: query
+          name: trigger
+          schema: { type: string, enum: [workbench, api] }
+        - in: query
+          name: actorId
+          schema: { type: string }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 一页运行。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Runs]
+      operationId: createRun
+      summary: 提交 Agent 运行
+      description: |
+        校验、定价、预占额度并入队在一个事务内完成；返回 `202` 与 `queued` 的运行，不等待执行。
+        预占额度为 `limits.maxCostMicros`，完成后按实际费用结算并释放余量。额度、并发或价格不满足时直接拒绝，**尚未发送任何模型请求**。
+        同一 `Idempotency-Key` 重试返回原运行，不会重复执行。需要 `runs:write`。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRunRequest'
+      responses:
+        '202':
+          description: 已入队的运行。
+          headers:
+            Location:
+              description: 相对引用 `runs/{id}`。
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /runs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Runs]
+      operationId: getRun
+      summary: 运行详情
+      description: 运行中 `costMicros` 是截至目前的**估算**（`billingStatus=estimated`）；终态后为结算金额。工具调用的 id 在此返回 404。需要 `runs:read`。
+      responses:
+        '200':
+          description: 运行。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /runs/{id}/events:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Runs]
+      operationId: listRunEvents
+      summary: 运行事件（JSON 页或 SSE）
+      description: |
+        `Accept: text/event-stream` 时返回 SSE：每个事件的 `id` 是服务端序号，`event` 是事件类型，`data` 是事件 JSON；
+        运行结束且事件全部送达后发送 `event: end`（`data` 为 `{"status": "…"}`）并关闭。空闲时每 15 秒发送注释行保活。
+        断线后带 `Last-Event-ID` 重连（或用 `?after=`），可连到任意副本而不丢不重。否则返回 JSON 页。需要 `runs:read`。
+      parameters:
+        - $ref: '#/components/parameters/After'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/LastEventId'
+      responses:
+        '200': { $ref: '#/components/responses/Events' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /runs/{id}/tool-calls:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Runs]
+      operationId: listRunToolCalls
+      summary: 运行内的工具调用
+      description: 按调用顺序。输入输出只有摘要，不含文件内容或密钥。需要 `runs:read`。
+      responses:
+        '200':
+          description: 调用列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolCallList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /runs/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [Runs]
+      operationId: cancelRun
+      summary: 停止运行
+      description: |
+        排队中的运行立即变为 `cancelled`，不产生费用并释放预占。已在运行的运行进入 `cancelling`，**当前模型步骤结束后**停止
+        （中途放弃已付费的请求会让费用无从得知）；已发生的用量与外部效果不会撤回。重复请求无害。请求体被忽略。需要 `runs:write`。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      responses:
+        '202':
+          description: 停止请求后的运行。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /usage:
+    get:
+      tags: [Billing]
+      operationId: listUsage
+      summary: 用量明细
+      description: 追加式记录，最新的在前。不同结算状态不会合并。需要 `usage:read`。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - in: query
+          name: runId
+          schema: { type: string }
+        - in: query
+          name: keyId
+          schema: { type: string }
+        - in: query
+          name: category
+          schema: { type: string, enum: [model, tool, execution, adjustment, storage] }
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 一页用量。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageLinePage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /usage/summary:
+    get:
+      tags: [Billing]
+      operationId: getUsageSummary
+      summary: 用量汇总
+      description: 按 (类别, 单位, 结算状态) 分组。`settledMicros` 只含已结算部分；`pendingMicros` 是尚待核对的部分。需要 `usage:read`。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - in: query
+          name: runId
+          schema: { type: string }
+        - in: query
+          name: keyId
+          schema: { type: string }
+        - in: query
+          name: category
+          schema: { type: string, enum: [model, tool, execution, adjustment, storage] }
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: 汇总。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /billing/ledger:
+    get:
+      tags: [Billing]
+      operationId: listLedger
+      summary: 账本
+      description: 预占（reserve）、结算（settle）、释放（release）与调整（adjustment）只追加，从不修改。需要 `usage:read`。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+        - in: query
+          name: runId
+          schema: { type: string }
+        - in: query
+          name: type
+          schema: { type: string, enum: [reserve, settle, release, adjustment] }
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 一页账本记录。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /billing/rates:
+    get:
+      tags: [Billing]
+      operationId: getRateSheet
+      summary: 项目币种下的当前费率
+      description: |
+        托管执行费与每个沙箱规格的每秒价格，以及该规格现在能否使用（价格未发布、执行节点不支持或后端未开放时 `available=false` 并给出原因）。
+        提交运行前用它向用户展示费用依据。API Key 需要 `usage:read`、`runs:read` 或 `runs:write` 之一。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      responses:
+        '200':
+          description: 费率表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateSheet'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /overview:
+    get:
+      tags: [Runs]
+      operationId: getOverview
+      summary: 项目概览
+      description: 运行中的、需要人处理的（失败与结果待核对）、最近的运行，以及近 7 天各状态的数量。需要 `runs:read`。
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      responses:
+        '200':
+          description: 概览。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Overview'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/prices:
+    get:
+      tags: [Admin]
+      operationId: listPrices
+      summary: 价格版本
+      description: 仅登录用户。
+      parameters:
+        - in: query
+          name: kind
+          schema: { type: string, enum: [model, execution, sandbox, tool] }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 一页价格。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricePage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin]
+      operationId: createPrice
+      summary: 发布价格版本
+      description: |
+        价格版本不可变：调价是发布新版本，新版本从 `effectiveFrom`（不得早于现在）起适用。
+        运行在受理时冻结所用价格，之后的调价不影响它。仅平台管理员。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePriceRequest'
+      responses:
+        '201':
+          description: 新价格版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Price'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /admin/prices/presets:
+    post:
+      tags: [Admin]
+      operationId: publishPresetPrices
+      summary: 导入预设价格表
+      description: |
+        导入一份明示的、带版本的起始价格表（模型、托管执行、沙箱规格、工具）。只补缺失的币种与维度，**不覆盖管理员已发布的价格**，
+        可安全重试。这是平台价目，不是供应商结算金额；运行时不会实时抓取任何价格。仅平台管理员。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresetPricesRequest'
+      responses:
+        '200':
+          description: 本次新增的价格版本（已存在的不重复列出）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceList'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /admin/runs/{id}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [Admin]
+      operationId: resolveRun
+      summary: 核对结果待核对的运行
+      description: |
+        上游请求已发出但结果未知（`status=unknown`）时，平台保留预占而不重发、不退款。管理员凭供应商凭证确认费用后调用本接口：
+        运行转为 `failed`（`error.code=RESOLVED_UNKNOWN`）、按确认费用结算并释放余量，差额以调整记录追加到账本。仅平台管理员。
+        原始用量保持不可变；独立追加核对证据，查询投影关联该证据显示当前结算状态，不改写历史用量。
+      parameters:
+        - $ref: '#/components/parameters/ProductHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveRunRequest'
+      responses:
+        '200':
+          description: 核对后的运行。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+components:
+  securitySchemes:
+    ApiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: al_live_<8 位十六进制>_<40 位十六进制>
+      description: 绑定一个项目、一组 scope、可选月度上限与到期时间的机器身份。服务端只保存哈希。
+    Session:
+      type: apiKey
+      in: cookie
+      name: agentlab_session
+      description: 工作台登录会话。非 GET 请求还必须带 `X-AgentLab-Request` 头。
+  parameters:
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      description: '8–128 位字符（字母、数字、`_ . : -`）。重试同一次写入时保持不变。'
+      schema: { type: string, minLength: 8, maxLength: 128 }
+    ProductHeader:
+      in: header
+      name: X-AgentLab-Request
+      required: false
+      description: 使用会话 Cookie 的写请求必填，值为 `platform`；API Key 请求不需要。
+      schema: { type: string, enum: [platform] }
+    Cursor:
+      in: query
+      name: cursor
+      description: 上一页返回的 `nextCursor`。无效游标返回 `400 INVALID_CURSOR`，请从第一页重新开始。
+      schema: { type: string }
+    Limit:
+      in: query
+      name: limit
+      description: 每页条数，默认 25，最大 100。
+      schema: { type: integer, minimum: 0, maximum: 100 }
+    ProjectIdQuery:
+      in: query
+      name: projectId
+      description: 登录用户必填；API Key 可省略（密钥已绑定项目），给出时必须是它的项目。
+      schema: { type: string }
+    ProjectId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    RunId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    ToolCallId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    ArtifactId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    After:
+      in: query
+      name: after
+      description: 只返回序号大于它的事件。优先于 `Last-Event-ID`。
+      schema: { type: integer, format: int64, minimum: 0 }
+    LastEventId:
+      in: header
+      name: Last-Event-ID
+      description: SSE 重连时由客户端带上的上一个事件序号。
+      schema: { type: string }
+    From:
+      in: query
+      name: from
+      description: 起始时间（含），带时区的 RFC 3339。
+      schema: { type: string, format: date-time }
+    To:
+      in: query
+      name: to
+      description: 结束时间（不含），带时区的 RFC 3339，必须晚于 `from`。
+      schema: { type: string, format: date-time }
+  responses:
+    BadRequest:
+      description: |
+        请求本身无法处理：`INVALID_JSON`（含未知字段或多余内容）、`INVALID_QUERY`、`INVALID_CURSOR`、`IDEMPOTENCY_KEY_REQUIRED`。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    Unauthorized:
+      description: 未登录（`UNAUTHENTICATED`）或 API Key 无效、已过期、已撤销（`INVALID_API_KEY`，不区分原因）。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    Forbidden:
+      description: |
+        身份有效但不被允许：`FORBIDDEN`（没有权限，例如 API Key 管理项目）、`FORBIDDEN_SCOPE`（密钥缺少所需 scope）、
+        `PRODUCT_HEADER_REQUIRED`（会话写请求缺少 `X-AgentLab-Request`）。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    NotFound:
+      description: 资源不存在或无权访问（`NOT_FOUND`，两者不可区分）。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    Conflict:
+      description: |
+        与当前状态冲突：`VERSION_CONFLICT`（版本过期）、`IDEMPOTENCY_KEY_REUSED`（同一键用于不同内容）、`KEY_ALREADY_ISSUED`、`KEY_LIMIT`、
+        `PROJECT_PAUSED`、`BUDGET_NOT_CONFIGURED`、`BUDGET_EXCEEDED`、`CONCURRENCY_LIMIT`、`PRICE_NOT_CONFIGURED`、`TOOL_UNAVAILABLE`、
+        `CONNECTION_NOT_GRANTED`、`CONNECTION_UNAVAILABLE`、`ALREADY_AVAILABLE`、`UPLOAD_IN_PROGRESS`、`NOT_UNKNOWN`、`CONFLICT`。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    TooLarge:
+      description: 请求体或文件超过上限（`REQUEST_TOO_LARGE`、`FILE_TOO_LARGE`）。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    Unprocessable:
+      description: 内容不合法（`VALIDATION_ERROR`）。`fields` 以点分路径指出每个字段，如 `limits.maxCostMicros`、`input.artifactIds`。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    TooManyRequests:
+      description: 超过该 API Key 的限流（`RATE_LIMITED`）。
+      headers:
+        Retry-After:
+          description: 建议等待的秒数。
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    Events:
+      description: '事件的 JSON 页，或 `Accept: text/event-stream` 时的 SSE 流。'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EventPage'
+        text/event-stream:
+          schema:
+            type: string
+            description: |
+              每个事件形如 `id: <序号>\nevent: <类型>\ndata: <RunEvent JSON>\n\n`；结束时 `event: end` 与 `data: {"status":"…"}`；
+              出错时 `event: error`。
+  schemas:
+    Money:
+      type: string
+      pattern: '^-?[0-9]+$'
+      description: 整数微单位的十进制字符串（1 元 = 1 000 000）。
+      example: '17200'
+    Cursor:
+      type: string
+    ErrorBody:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+          description: 稳定的错误码。
+          example: BUDGET_EXCEEDED
+        message:
+          type: string
+          description: 面向人的说明，可能变化。
+        requestId:
+          type: string
+          description: 与响应头 `X-Request-ID` 相同，报障时提供。
+        fields:
+          type: object
+          additionalProperties: { type: string }
+          description: 校验错误时逐字段的原因，键为点分路径。
+    Workspace:
+      type: object
+      required: [id, name]
+      description: 调用者所在的工作区（租户）。当前每个部署只有一个工作区。
+      properties:
+        id: { type: string, description: 租户标识。所有资源都归属于它。 }
+        name: { type: string, description: 工作区显示名，由部署配置决定，不是安全凭据。 }
+    Me:
+      type: object
+      required: [kind, admin, workspace]
+      properties:
+        kind: { type: string, enum: [user, api_key] }
+        userId: { type: string }
+        username: { type: string }
+        displayName: { type: string }
+        admin: { type: boolean }
+        keyId: { type: string }
+        keyName: { type: string }
+        projectId: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+        workspace: { $ref: '#/components/schemas/Workspace' }
+    Readiness:
+      type: object
+      required: [ready, checks, capabilities]
+      properties:
+        ready: { type: boolean }
+        checks:
+          type: array
+          items:
+            type: object
+            required: [name, ok]
+            properties:
+              name: { type: string, example: database }
+              ok: { type: boolean }
+              detail: { type: string }
+        capabilities:
+          type: object
+          required:
+            [modules, runs, codeExecution, maxUploadBytes, maxRunInputBytes, workerConcurrency]
+          properties:
+            modules:
+              type: object
+              additionalProperties: { type: boolean }
+              description: 此部署提供的功能模块。
+            runs: { type: boolean }
+            codeExecution: { type: boolean }
+            codeExecutionReason:
+              type: string
+              description: '`codeExecution=false` 时的原因。'
+            isolation:
+              type: string
+              description: 执行隔离的真实边界，如 `docker/container`、`docker/gvisor`。容器共享宿主内核，不等同于微虚拟机。
+              example: docker/container
+            maxUploadBytes: { type: integer, format: int64 }
+            maxRunInputBytes: { type: integer, format: int64 }
+            workerConcurrency: { type: integer }
+    Budget:
+      type: object
+      description: >-
+        项目预算是累计额度：已结算的费用持续累加，不按月或其他周期重置，用完后要调高上限才能继续运行；周期预算尚未实现。
+        只有 API Key 的 `monthlyLimitMicros` 按自然月计。
+      required:
+        [
+          configured,
+          currency,
+          limitMicros,
+          heldMicros,
+          spentMicros,
+          availableMicros,
+          activeRuns,
+          maxConcurrentRuns,
+          version,
+        ]
+      properties:
+        configured:
+          type: boolean
+          description: 未配置预算的项目不能提交运行。
+        currency: { type: string, enum: [CNY, USD] }
+        limitMicros: { $ref: '#/components/schemas/Money' }
+        heldMicros:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: 排队与运行中的任务已预占的额度，以及结果待核对而冻结的额度。
+        spentMicros: { $ref: '#/components/schemas/Money' }
+        availableMicros: { $ref: '#/components/schemas/Money' }
+        activeRuns: { type: integer }
+        maxConcurrentRuns: { type: integer }
+        version:
+          type: integer
+          description: 预算配置版本，用于 `PUT …/budget`。
+    ProjectCounts:
+      type: object
+      required: [apiKeys, connections, agents]
+      description: 项目详情里的数量，都是项目此刻实际可用的数量，不含已吊销、过期或未验证的。
+      properties:
+        apiKeys: { type: integer, description: 未吊销且未过期的 API Key。 }
+        connections:
+          type: integer
+          description: 项目此刻能用的模型连接：与工作区共享或已授予该项目，且已验证、未过期、未吊销。
+        agents: { type: integer, description: 已发布的 Agent 数。Agent 属于目录，不属于某个项目。 }
+    Project:
+      type: object
+      required:
+        [
+          id,
+          name,
+          slug,
+          description,
+          environment,
+          status,
+          currency,
+          retentionDays,
+          createdBy,
+          createdAt,
+          updatedAt,
+          version,
+          role,
+          budget,
+        ]
+      properties:
+        id: { type: string, example: prj_0123456789abcdef }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        environment: { type: string, enum: [production, staging] }
+        status: { type: string, enum: [active, paused] }
+        currency: { type: string, enum: [CNY, USD] }
+        retentionDays:
+          type: integer
+          description: 文件与运行记录的保留天数。
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer }
+        role:
+          type: string
+          enum: [owner, member, admin]
+          description: 调用者在此项目中的角色；`admin` 是平台管理员对非成员项目的只读视角。
+        budget: { $ref: '#/components/schemas/Budget' }
+        counts: { $ref: '#/components/schemas/ProjectCounts' }
+    ProjectPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Project' }
+        nextCursor: { $ref: '#/components/schemas/Cursor' }
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 500 }
+        environment: { type: string, enum: [production, staging], default: production }
+        currency: { type: string, enum: [CNY, USD], description: 默认取部署的默认币种。 }
+        budgetMicros:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: 省略或 null 表示暂不配置预算。
+        maxConcurrentRuns:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: 省略取平台默认；显式值必须有效，0 会被拒绝。
+        retentionDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          description: 省略取平台默认；显式值必须有效，0 会被拒绝。
+    UpdateProjectRequest:
+      type: object
+      required: [version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 500 }
+        status: { type: string, enum: [active, paused] }
+        version: { type: integer }
+    SetBudgetRequest:
+      type: object
+      required: [limitMicros, version]
+      properties:
+        limitMicros: { $ref: '#/components/schemas/Money' }
+        maxConcurrentRuns:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: 省略表示保持当前值。
+        version:
+          type: integer
+          description: 当前 `Project.budget.version`；尚无预算时为 0。
+    Grant:
+      type: object
+      required:
+        [
+          projectId,
+          projectName,
+          connectionId,
+          connectionName,
+          provider,
+          models,
+          status,
+          source,
+          createdBy,
+          createdAt,
+        ]
+      properties:
+        projectId: { type: string }
+        projectName: { type: string }
+        connectionId: { type: string }
+        connectionName: { type: string }
+        provider: { type: string }
+        models:
+          type: array
+          items: { type: string }
+        status: { type: string, description: 连接状态，如 active、pending、revoked。 }
+        source: { type: string, enum: [platform, byok] }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+    GrantList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Grant' }
+    ModelOption:
+      type: object
+      required:
+        [
+          connectionId,
+          connectionName,
+          provider,
+          model,
+          source,
+          status,
+          usable,
+          priced,
+          verifiedAt,
+          toolCalling,
+          price,
+        ]
+      properties:
+        connectionId: { type: string }
+        connectionName: { type: string }
+        provider: { type: string }
+        model: { type: string }
+        source: { type: string, enum: [platform, byok] }
+        status: { type: string, description: 连接状态。 }
+        usable: { type: boolean }
+        reason:
+          type: string
+          description: 不可用时的原因。
+        priced:
+          type: boolean
+          description: 平台是否已为该模型发布价格。自带密钥的模型无需价格。
+        verifiedAt: { type: [string, 'null'], format: date-time }
+        toolCalling:
+          type: string
+          description: 工具调用能力的验证状态；目前恒为 `unverified`。
+        price:
+          description: 当前生效的平台价格；没有价格（含自带密钥的模型）时为 null。
+          oneOf:
+            - $ref: '#/components/schemas/Price'
+            - type: 'null'
+    ModelOptionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ModelOption' }
+    ApiKey:
+      type: object
+      required:
+        [
+          id,
+          projectId,
+          name,
+          prefix,
+          scopes,
+          status,
+          state,
+          expiresAt,
+          lastUsedAt,
+          monthlyLimitMicros,
+          currency,
+          ratePerMinute,
+          createdBy,
+          createdAt,
+          revokedAt,
+          version,
+        ]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        name: { type: string }
+        prefix:
+          type: string
+          description: 密钥的可见前缀（`al_live_` 加 8 位），用于辨认，不能用于鉴权。
+        scopes:
+          type: array
+          items: { $ref: '#/components/schemas/Scope' }
+        status: { type: string, enum: [active, revoked] }
+        state:
+          type: string
+          enum: [active, expiring, expired, revoked]
+          description: 面向人的状态；`expiring` 表示即将到期。
+        expiresAt: { type: [string, 'null'], format: date-time }
+        lastUsedAt:
+          type: [string, 'null']
+          format: date-time
+          description: 粗粒度记录（约每分钟更新一次），不是逐次请求时间。
+        monthlyLimitMicros:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: 自然月内该密钥可用的额度上限。
+        currency: { type: string, enum: [CNY, USD] }
+        ratePerMinute: { type: integer, minimum: 1, maximum: 100000 }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer }
+    CreatedApiKey:
+      allOf:
+        - $ref: '#/components/schemas/ApiKey'
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: 密钥明文，**仅此一次**。请立即保存到密钥管理系统。
+              example: al_live_0123abcd_0123456789abcdef0123456789abcdef01234567
+    ApiKeyPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ApiKey' }
+        nextCursor: { $ref: '#/components/schemas/Cursor' }
+    Scope:
+      type: string
+      enum: [runs:write, runs:read, files:write, artifacts:read, usage:read, tools:call]
+    CreateApiKeyRequest:
+      type: object
+      required: [projectId, name, scopes]
+      properties:
+        projectId: { type: string }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        scopes:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Scope' }
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: 最长 3 年；null 表示不自动到期。
+        monthlyLimitMicros:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        ratePerMinute:
+          type: integer
+          minimum: 1
+          maximum: 100000
+          description: 省略取部署的默认值。
+    VersionLimits:
+      type: object
+      required:
+        [
+          defaultExecutionSeconds,
+          maxExecutionSeconds,
+          defaultToolCalls,
+          maxToolCalls,
+          maxInputFiles,
+          maxInputBytes,
+          maxTokensPerStep,
+        ]
+      properties:
+        defaultExecutionSeconds: { type: integer }
+        maxExecutionSeconds: { type: integer }
+        defaultToolCalls: { type: integer }
+        maxToolCalls: { type: integer }
+        maxInputFiles: { type: integer }
+        maxInputBytes: { type: integer, format: int64 }
+        maxTokensPerStep: { type: integer }
+    ToolRef:
+      type: object
+      required: [name, version]
+      properties:
+        name: { type: string, example: code.execute }
+        version: { type: string, example: 1.0.0 }
+    AgentVersion:
+      type: object
+      required:
+        [
+          id,
+          agentId,
+          version,
+          status,
+          digest,
+          promptDigest,
+          tools,
+          outputSchema,
+          limits,
+          inputFormats,
+          sandbox,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, example: agv_file_analysis_1_0_0 }
+        agentId: { type: string }
+        version: { type: string }
+        status: { type: string }
+        digest:
+          type: string
+          description: 整个版本定义的摘要。
+        promptDigest:
+          type: string
+          description: 系统提示词的摘要；提示词本身不对外提供。
+        tools:
+          type: array
+          items: { $ref: '#/components/schemas/ToolRef' }
+        outputSchema:
+          type: object
+          description: 最终答案必须满足的 JSON Schema。
+        limits: { $ref: '#/components/schemas/VersionLimits' }
+        inputFormats:
+          type: array
+          items: { type: string }
+        sandbox:
+          type: string
+          description: 代码执行所需的沙箱类别。
+        createdAt: { type: string, format: date-time }
+    Agent:
+      type: object
+      required: [id, slug, name, description, status, latestVersionId, createdAt, latestVersion]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        status: { type: string }
+        latestVersionId: { type: string }
+        createdAt: { type: string, format: date-time }
+        latestVersion:
+          oneOf:
+            - $ref: '#/components/schemas/AgentVersion'
+            - type: 'null'
+    AgentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Agent' }
+    AgentDetail:
+      type: object
+      required: [agent, versions]
+      properties:
+        agent: { $ref: '#/components/schemas/Agent' }
+        versions:
+          type: array
+          items: { $ref: '#/components/schemas/AgentVersion' }
+    Meter:
+      type: object
+      required: [unit, description]
+      properties:
+        unit: { type: string, example: file }
+        description: { type: string }
+    Price:
+      type: object
+      required:
+        [
+          id,
+          kind,
+          name,
+          currency,
+          inputMicros,
+          cachedInputMicros,
+          outputMicros,
+          perSecondMicros,
+          perUnitMicros,
+          note,
+          effectiveFrom,
+          createdBy,
+          createdAt,
+        ]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [model, execution, sandbox, tool] }
+        name: { type: string }
+        currency: { type: string, enum: [CNY, USD] }
+        provider: { type: string, description: 模型价格的供应商。 }
+        model: { type: string, description: 模型价格的模型名。 }
+        inputMicros:
+          {
+            allOf: [{ $ref: '#/components/schemas/Money' }],
+            description: 每百万输入 token 的价格。,
+          }
+        cachedInputMicros:
+          {
+            allOf: [{ $ref: '#/components/schemas/Money' }],
+            description: 每百万缓存命中输入 token 的价格。,
+          }
+        outputMicros:
+          {
+            allOf: [{ $ref: '#/components/schemas/Money' }],
+            description: 每百万输出 token 的价格。,
+          }
+        perSecondMicros:
+          {
+            allOf: [{ $ref: '#/components/schemas/Money' }],
+            description: 托管执行或沙箱规格每秒的价格（不足一秒按一秒）。,
+          }
+        resourceProfile: { type: string, description: 沙箱价格对应的规格 id，见 ResourceProfile。 }
+        sandboxBilling:
+          {
+            type: string,
+            enum: [separate],
+            description: 托管价格标记。省略表示已含算力；separate 表示仅托管服务费，沙箱规格另计。,
+          }
+        referenceUrl:
+          { type: string, description: 预设价格所参照的公开页面；仅供查证，不是供应商结算依据。 }
+        referenceAt: { type: [string, 'null'], format: date-time, description: 参照快照的时间。 }
+        tool: { type: string }
+        unit: { type: string, description: 工具计量单位，如 call、second、file。 }
+        perUnitMicros: { $ref: '#/components/schemas/Money' }
+        note: { type: string }
+        effectiveFrom: { type: string, format: date-time }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+    PricePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Price' }
+        nextCursor: { $ref: '#/components/schemas/Cursor' }
+    CreatePriceRequest:
+      type: object
+      required: [kind, name, currency]
+      properties:
+        kind: { type: string, enum: [model, execution, sandbox, tool] }
+        name: { type: string }
+        currency: { type: string, enum: [CNY, USD] }
+        provider: { type: string }
+        model: { type: string }
+        inputMicros: { $ref: '#/components/schemas/Money' }
+        cachedInputMicros: { $ref: '#/components/schemas/Money' }
+        outputMicros: { $ref: '#/components/schemas/Money' }
+        perSecondMicros: { $ref: '#/components/schemas/Money' }
+        resourceProfile: { type: string }
+        sandboxBilling:
+          {
+            type: string,
+            enum: ['', separate],
+            description: 仅 execution 使用；空值包含算力，separate 按沙箱规格另计。,
+          }
+        referenceUrl: { type: string }
+        referenceAt: { type: [string, 'null'], format: date-time }
+        tool: { type: string }
+        unit: { type: string }
+        perUnitMicros: { $ref: '#/components/schemas/Money' }
+        note: { type: string }
+        effectiveFrom:
+          type: [string, 'null']
+          format: date-time
+          description: 省略表示立即生效；不得早于现在。
+    ResourceProfile:
+      type: object
+      required: [id, name, cpu, memoryMB, gpu]
+      description: 固定分配的沙箱规格，不代表实测利用率。
+      properties:
+        id: { type: string, example: cpu-2-4 }
+        name: { type: string }
+        cpu: { type: integer }
+        memoryMB: { type: integer }
+        gpu: { type: integer }
+        gpuType: { type: string }
+    RunPrices:
+      type: object
+      required: [execution, tools]
+      description: 一次运行所用价格版本的 id。
+      properties:
+        model: { type: string }
+        execution: { type: string }
+        sandbox: { type: string }
+        tools:
+          type: object
+          additionalProperties: { type: string }
+          description: 工具名到价格版本 id。
+    ResourceRate:
+      allOf:
+        - $ref: '#/components/schemas/ResourceProfile'
+        - type: object
+          required: [available, price]
+          properties:
+            available:
+              type: boolean
+              description: 当前能否使用此规格（价格已发布、执行节点支持、后端已开放）。
+            reason: { type: string, description: 不可用时的原因。 }
+            price:
+              oneOf:
+                - $ref: '#/components/schemas/Price'
+                - type: 'null'
+    RateSheet:
+      type: object
+      required: [execution, resources]
+      properties:
+        execution:
+          description: 托管执行（开始运行到结束，含模型等待、不含排队）每秒价格。
+          oneOf:
+            - $ref: '#/components/schemas/Price'
+            - type: 'null'
+        resources:
+          type: array
+          items: { $ref: '#/components/schemas/ResourceRate' }
+    PresetPricesRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider: { type: string, description: 要为其导入预设模型价格的连接供应商标识。 }
+    PriceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Price' }
+    Tool:
+      type: object
+      required:
+        [
+          id,
+          name,
+          version,
+          category,
+          summary,
+          description,
+          inputSchema,
+          outputSchema,
+          risk,
+          requiresApproval,
+          sideEffects,
+          retry,
+          meters,
+          status,
+          sample,
+          digest,
+          createdAt,
+          prices,
+        ]
+      properties:
+        billingPolicy:
+          { type: string, description: 当前平台计费策略；已发布工具 meters 原文保持不可变。 }
+        id: { type: string }
+        name: { type: string, example: files.transform }
+        version: { type: string }
+        category: { type: string }
+        summary: { type: string }
+        description: { type: string }
+        inputSchema: { type: object, description: 输入必须满足的 JSON Schema。 }
+        outputSchema: { type: object }
+        risk: { type: string, enum: [low, medium, high] }
+        requiresApproval: { type: boolean }
+        sideEffects: { type: string }
+        retry: { type: string, description: 重试语义的说明。 }
+        meters:
+          type: array
+          items: { $ref: '#/components/schemas/Meter' }
+        status: { type: string, enum: [available, beta, disabled] }
+        sample: { type: object, description: 一个可直接使用的输入示例。 }
+        digest: { type: string }
+        createdAt: { type: string, format: date-time }
+        prices:
+          type: array
+          items: { $ref: '#/components/schemas/Price' }
+    ToolList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Tool' }
+    CreateToolCallRequest:
+      type: object
+      required: [input]
+      properties:
+        projectId: { type: string }
+        version: { type: string, description: 省略取最新可用版本。 }
+        artifactIds:
+          type: array
+          items: { type: string }
+          description: 工具要读取的已上传文件（按文件名在 `input` 中引用）。
+        input:
+          type: object
+          description: 满足该工具 `inputSchema` 的输入。
+    RunError:
+      type: object
+      required: [code, message, nextStep]
+      properties:
+        code:
+          type: string
+          description: |
+            稳定的错误码，非穷尽：`BUDGET_EXHAUSTED`、`CONNECTION_UNAVAILABLE`、`INTERRUPTED`、`MODEL_REJECTED`、`MODEL_RESULT_UNKNOWN`、
+            `MODEL_UNAVAILABLE`、`MODEL_USAGE_INVALID`、`MODEL_USAGE_MISSING`、`OUTPUT_INVALID`、`RESOLVED_UNKNOWN`、`RESULT_UNKNOWN`、
+            `STEP_LIMIT`、`TIME_LIMIT`、`TOOL_LIMIT`、`CANCELLED`、`INTERNAL`。
+        message:
+          type: string
+          description: 面向人的说明。不转述供应商的原文，也不含任何凭据。
+        nextStep: { type: string, description: 建议的下一步。 }
+    AgentRef:
+      type: object
+      required: [id, name, versionId, version]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        versionId: { type: string }
+        version: { type: string }
+    ActorRef:
+      type: object
+      required: [kind, id, name]
+      properties:
+        kind: { type: string, enum: [user, api_key] }
+        id: { type: string }
+        name: { type: string }
+    ModelRef:
+      type: object
+      required: [connectionId, connectionName, provider, model, source]
+      properties:
+        connectionId: { type: string }
+        connectionName: { type: string }
+        provider: { type: string }
+        model: { type: string }
+        source: { type: string, enum: [platform, byok] }
+    RunLimits:
+      type: object
+      required: [maxExecutionSeconds, maxToolCalls, maxModelSteps, maxCostMicros, currency]
+      properties:
+        maxExecutionSeconds: { type: integer }
+        maxToolCalls: { type: integer }
+        maxModelSteps: { type: integer }
+        maxCostMicros: { $ref: '#/components/schemas/Money' }
+        currency: { type: string, enum: [CNY, USD] }
+    RunUsage:
+      type: object
+      required: [modelSteps, toolCalls, inputTokens, outputTokens, executionSeconds]
+      properties:
+        modelSteps: { type: integer }
+        toolCalls: { type: integer }
+        inputTokens:
+          {
+            type: [integer, 'null'],
+            format: int64,
+            description: 供应商未报告用量时为 null，不估算。,
+          }
+        outputTokens: { type: [integer, 'null'], format: int64 }
+        executionSeconds: { type: [integer, 'null'], format: int64 }
+    Run:
+      type: object
+      required:
+        [
+          id,
+          projectId,
+          status,
+          blockedReason,
+          cancelRequested,
+          agent,
+          trigger,
+          actor,
+          inputSummary,
+          inputArtifactIds,
+          model,
+          limits,
+          resources,
+          prices,
+          metadata,
+          createdAt,
+          startedAt,
+          finishedAt,
+          durationMs,
+          costMicros,
+          currency,
+          billingStatus,
+          reservedMicros,
+          usage,
+          result,
+          outputArtifactIds,
+          error,
+        ]
+      properties:
+        id: { type: string, example: run_0123456789abcdef }
+        projectId: { type: string }
+        status:
+          type: string
+          enum: [queued, preparing, running, cancelling, succeeded, failed, cancelled, unknown]
+          description: |
+            `unknown` 表示上游请求已发出但结果未知：预占被保留，等待管理员核对，平台不会重发也不会退款。
+            终态为 succeeded、failed、cancelled、unknown。
+        blockedReason: { type: [string, 'null'], description: 因审批等原因暂停时的原因。 }
+        cancelRequested: { type: boolean }
+        agent: { $ref: '#/components/schemas/AgentRef' }
+        trigger: { type: string, enum: [workbench, api] }
+        actor: { $ref: '#/components/schemas/ActorRef' }
+        inputSummary: { type: string }
+        instruction: { type: string, description: 提交的指令全文。 }
+        inputArtifactIds:
+          type: array
+          items: { type: string }
+        model: { $ref: '#/components/schemas/ModelRef' }
+        limits: { $ref: '#/components/schemas/RunLimits' }
+        sandboxImage:
+          {
+            type: string,
+            description: 受理时固定的本地 OCI 镜像 sha256 ID；后续标签变化不会替换该 Run 的镜像。,
+          }
+        resources:
+          description: 代码沙箱的资源规格；受理时冻结。
+          oneOf:
+            - $ref: '#/components/schemas/ResourceProfile'
+            - type: 'null'
+        prices:
+          description: 受理时冻结的价格版本；之后的调价不影响这次运行。
+          allOf:
+            - $ref: '#/components/schemas/RunPrices'
+        metadata:
+          type: object
+          additionalProperties: { type: string }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        durationMs: { type: [integer, 'null'], format: int64 }
+        costMicros:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: 终态且 `billingStatus=settled` 时是结算金额；运行中是估算；结果待核对时为 null。
+        currency: { type: string, enum: [CNY, USD] }
+        billingStatus:
+          type: string
+          enum: [pending, estimated, settled, not_applicable]
+        reservedMicros: { $ref: '#/components/schemas/Money' }
+        usage: { $ref: '#/components/schemas/RunUsage' }
+        result:
+          type: [object, 'null']
+          description: 成功时满足 Agent 版本 `outputSchema` 的最终答案，并校验过其中引用的文件确实存在。
+        outputArtifactIds:
+          type: array
+          items: { type: string }
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/RunError'
+            - type: 'null'
+    RunPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Run' }
+        nextCursor: { $ref: '#/components/schemas/Cursor' }
+    CreateRunRequest:
+      type: object
+      required: [agentVersionId, modelConnectionId, model, input, limits]
+      properties:
+        projectId: { type: string, description: 登录用户必填；API Key 可省略。 }
+        agentVersionId: { type: string }
+        modelConnectionId: { type: string }
+        model: { type: string }
+        resourceProfile:
+          type: string
+          description: 代码沙箱的资源规格 id，取自 GET /billing/rates；省略取默认规格。规格有自己的每秒价格，GPU 规格目前只是预设、不能提交。
+          example: cpu-1-1
+        input:
+          type: object
+          required: [instruction]
+          properties:
+            instruction: { type: string, minLength: 1, maxLength: 8000 }
+            artifactIds:
+              type: array
+              items: { type: string }
+              description: 已上传完成的输入文件；数量与总大小受 Agent 版本限制，且文件名不能重复。
+        limits:
+          type: object
+          required: [maxCostMicros]
+          properties:
+            maxCostMicros:
+              allOf: [{ $ref: '#/components/schemas/Money' }]
+              description: 本次运行最多花多少。提交时按此金额预占；用尽即停止，不会超支。
+            currency: { type: string, enum: [CNY, USD], description: 省略取项目币种。 }
+            maxExecutionSeconds:
+              {
+                type: integer,
+                minimum: 1,
+                description: 省略取 Agent 版本默认值，不得超过版本上限。,
+              }
+            maxToolCalls:
+              {
+                type: integer,
+                minimum: 1,
+                description: 省略取 Agent 版本默认值，不得超过版本上限。,
+              }
+        metadata:
+          type: object
+          maxProperties: 16
+          additionalProperties: { type: string, maxLength: 200 }
+          description: 调用方自己的标签（键 1–40 位字母数字与 `_ . -`），原样返回。
+    RunEvent:
+      type: object
+      required: [id, runId, seq, at, level, source, type, message]
+      properties:
+        id: { type: string }
+        runId: { type: string }
+        seq:
+          type: integer
+          format: int64
+          description: 单调递增的序号（可能有间隙），续传游标。
+        at: { type: string, format: date-time }
+        level: { type: string, enum: [info, success, warning, error] }
+        source:
+          type: string
+          description: 事件来源，如 api、worker、gateway、tool；可能新增。
+        type:
+          type: string
+          description: |
+            事件类型，非穷尽：`run.accepted`、`run.started`、`run.resumed`、`model.requested`、`model.responded`、`tool.started`、
+            `tool.finished`、`run.repair`、`run.answered`、`run.succeeded`、`run.failed`、`run.cancel_requested`、`run.cancelled`、
+            `run.requeued`、`run.unknown`、`run.resolved`。
+        message: { type: string }
+        data:
+          type: object
+          additionalProperties: true
+    EventPage:
+      type: object
+      required: [items, cursor, status, terminal]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RunEvent' }
+        cursor:
+          type: integer
+          format: int64
+          description: 最后一条事件的序号；下次用 `?after=` 带上它。
+        status: { type: string, description: 运行或调用当前状态。 }
+        terminal:
+          type: boolean
+          description: 运行已结束且所有事件都已送达。
+    ToolCall:
+      type: object
+      required:
+        [
+          id,
+          projectId,
+          seq,
+          name,
+          version,
+          status,
+          standalone,
+          inputSummary,
+          outputSummary,
+          startedAt,
+          finishedAt,
+          durationMs,
+          unit,
+          quantity,
+          costMicros,
+          billingStatus,
+          billedTo,
+          artifactIds,
+          error,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, example: tc_0123456789abcdef }
+        runId: { type: string, description: 运行内调用所属的运行；独立调用没有。 }
+        projectId: { type: string }
+        seq: { type: integer }
+        name: { type: string }
+        version: { type: string }
+        status:
+          type: string
+          enum: [planned, waiting_approval, dispatched, succeeded, failed, unknown]
+          description: 被停止的调用为 `failed` 且 `error.code=CANCELLED`。
+        standalone: { type: boolean }
+        inputSummary: { type: string }
+        outputSummary: { type: string }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        durationMs: { type: [integer, 'null'], format: int64 }
+        unit: { type: string, description: 计量单位。 }
+        quantity: { type: string, pattern: '^-?[0-9]+$', description: 计量数量，十进制字符串。 }
+        costMicros:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        currency: { type: string }
+        billingStatus:
+          type: string
+          enum: [pending, estimated, settled, not_applicable]
+        billedTo:
+          { type: string, enum: [run, standalone], description: 费用计入 Agent 运行还是独立调用。 }
+        artifactIds:
+          type: array
+          items: { type: string }
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/RunError'
+            - type: 'null'
+        sandbox: { type: string, description: 代码执行所用的真实隔离，如 `docker/container`。 }
+        createdAt: { type: string, format: date-time }
+        result:
+          type: object
+          description: 独立调用完成后工具返回的内容。
+    ToolCallList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ToolCall' }
+    ToolCallPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ToolCall' }
+        nextCursor: { $ref: '#/components/schemas/Cursor' }
+    Artifact:
+      type: object
+      required:
+        [
+          id,
+          projectId,
+          kind,
+          name,
+          type,
+          mediaType,
+          sizeBytes,
+          sha256,
+          status,
+          summary,
+          superseded,
+          retentionDays,
+          createdAt,
+          readyAt,
+          expiresAt,
+        ]
+      properties:
+        id: { type: string, example: art_0123456789abcdef }
+        projectId: { type: string }
+        kind: { type: string, enum: [input, output] }
+        name: { type: string }
+        type:
+          type: string
+          description: 按内容判定的文件类别，如 csv、tsv、json、xlsx、txt、md、png、bin。
+        mediaType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        sha256: { type: string, description: 服务端在写入时计算，不采信调用方。 }
+        status: { type: string, enum: [pending, ready, expired, failed] }
+        runId: { type: string }
+        toolCallId: { type: string }
+        summary: { type: string }
+        superseded: { type: boolean, description: 已被同名的新版本取代。 }
+        retentionDays: { type: integer }
+        createdAt: { type: string, format: date-time }
+        readyAt: { type: [string, 'null'], format: date-time }
+        expiresAt:
+          { type: string, format: date-time, description: 超过后内容被删除，记录保留为 expired。 }
+    ArtifactPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Artifact' }
+        nextCursor: { $ref: '#/components/schemas/Cursor' }
+    UploadTicket:
+      allOf:
+        - $ref: '#/components/schemas/Artifact'
+        - type: object
+          required: [uploadUrl, uploadExpiresAt]
+          properties:
+            uploadUrl:
+              type: string
+              description: 以 `PUT` 发送文件字节的地址，已含调用方使用的前缀（`/v1/…` 或 `/api/v1/platform/…`）。
+              example: /v1/files/art_0123456789abcdef/content
+            uploadExpiresAt: { type: string, format: date-time }
+    InitUploadRequest:
+      type: object
+      required: [name, size]
+      properties:
+        projectId: { type: string, description: 登录用户必填；API Key 可省略。 }
+        name: { type: string, maxLength: 200 }
+        size:
+          {
+            type: integer,
+            format: int64,
+            minimum: 1,
+            description: 字节数；上传的实际大小必须一致。,
+          }
+        sha256:
+          {
+            type: string,
+            pattern: '^[0-9a-f]{64}$',
+            description: 可选；给出时与服务端计算的摘要比对。,
+          }
+    DownloadLink:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          description: 已含调用方使用的前缀。可直接交给浏览器。
+          example: /v1/download/eyJhIjoi….3f2a…
+        expiresAt: { type: string, format: date-time }
+    Preview:
+      type: object
+      required: [type, name, mediaType, sizeBytes, truncated]
+      properties:
+        type: { type: string, enum: [table, text, json, image, binary] }
+        name: { type: string }
+        mediaType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        text: { type: string }
+        columns:
+          type: array
+          items: { type: string }
+        rows:
+          type: array
+          items:
+            type: array
+            items: { type: string }
+        truncated: { type: boolean }
+    UsageLine:
+      type: object
+      required:
+        [
+          id,
+          projectId,
+          runId,
+          category,
+          meter,
+          source,
+          quantity,
+          unit,
+          amountMicros,
+          currency,
+          status,
+          basis,
+          note,
+          at,
+        ]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        runId: { type: string }
+        keyId: { type: string }
+        category:
+          type: string
+          enum: [model, tool, execution, adjustment, storage]
+          description: >-
+            `storage` 是按日采样的存储用量（单位 `mib_day`），只披露、不单独计费：状态为 `not_applicable`，金额为 null，
+            含在项目基础额度内；不属于任何一次运行，所以没有 `runId`。
+        meter: { type: string, example: tokens }
+        source:
+          {
+            type: string,
+            description: 数量的来源，如 provider-reported、platform-measured、estimated、unknown。,
+          }
+        quantity: { type: string, pattern: '^-?[0-9]+$', description: 数量，十进制字符串。 }
+        unit: { type: string }
+        amountMicros:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+          description: 自带密钥的模型用量没有平台费用，为 null。
+        currency: { type: string }
+        status: { type: string, enum: [pending, estimated, settled, not_applicable] }
+        basis: { type: string, description: 计费依据，如所用价格版本。 }
+        priceId: { type: string }
+        note: { type: string }
+        at: { type: string, format: date-time }
+    UsageLinePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/UsageLine' }
+        nextCursor: { $ref: '#/components/schemas/Cursor' }
+    UsageGroup:
+      type: object
+      required:
+        [category, unit, status, quantity, quantityKnown, amountMicros, amountKnown, lines, note]
+      properties:
+        category: { type: string }
+        unit: { type: string }
+        status: { type: string, enum: [pending, estimated, settled, not_applicable] }
+        quantity: { type: string, pattern: '^-?[0-9]+$' }
+        quantityKnown:
+          type: boolean
+          description: 组内有数量未知的记录时为 false，此时 `quantity` 只是已知部分之和。
+        amountMicros: { $ref: '#/components/schemas/Money' }
+        amountKnown:
+          type: boolean
+          description: 组内有金额未知的记录时为 false，此时 `amountMicros` 只是已知部分之和，不是组的总额。`not_applicable` 的记录不算未知。
+        lines: { type: integer }
+        note:
+          type: string
+          description: 这一组为什么没有平台费用（例如自带密钥的模型用量由客户在供应商处承担；存储含在基础额度内）。有费用的组为空字符串。
+    UsageSummary:
+      type: object
+      required: [projectId, currency, from, to, groups, settledMicros, pendingMicros]
+      properties:
+        projectId: { type: string }
+        currency: { type: string }
+        from: { type: [string, 'null'], format: date-time }
+        to: { type: [string, 'null'], format: date-time }
+        groups:
+          type: array
+          items: { $ref: '#/components/schemas/UsageGroup' }
+        settledMicros: { $ref: '#/components/schemas/Money' }
+        pendingMicros: { $ref: '#/components/schemas/Money' }
+    LedgerEntry:
+      type: object
+      required: [id, projectId, accountId, scope, type, amountMicros, currency, note, at]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        runId: { type: string }
+        accountId: { type: string }
+        scope: { type: string, enum: [tenant, project, key] }
+        type: { type: string, enum: [reserve, settle, release, adjustment] }
+        amountMicros: { $ref: '#/components/schemas/Money' }
+        currency: { type: string }
+        note: { type: string }
+        at: { type: string, format: date-time }
+    LedgerPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/LedgerEntry' }
+        nextCursor: { $ref: '#/components/schemas/Cursor' }
+    Overview:
+      type: object
+      required: [project, counts, active, attention, recent, since]
+      properties:
+        project: { $ref: '#/components/schemas/Project' }
+        counts:
+          type: object
+          additionalProperties: { type: integer }
+          description: 近 7 天各状态的运行数量，键是状态。
+        active:
+          type: array
+          items: { $ref: '#/components/schemas/Run' }
+        attention:
+          type: array
+          items: { $ref: '#/components/schemas/Run' }
+          description: 需要人处理的运行：失败的与结果待核对的。
+        recent:
+          type: array
+          items: { $ref: '#/components/schemas/Run' }
+        since: { type: string, format: date-time }
+    ResolveRunRequest:
+      type: object
+      required: [costMicros, evidence]
+      properties:
+        costMicros: { $ref: '#/components/schemas/Money' }
+        evidence:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: 核对依据，如供应商工单号。会写入运行的错误说明与审计记录。

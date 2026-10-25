@@ -1,0 +1,442 @@
+{
+  "verifiedOn": "2026-10-24T17:58:19.501Z",
+  "note": "Real model provider, real Docker sandbox, throwaway database. Sanitized: no keys, no file contents.",
+  "sandboxImage": "agentlab/sandbox-python:20261024",
+  "models": [
+    "minimax/minimax-m3.1-flash",
+    "deepseek/deepseek-v4.1-flash-1017",
+    "z-ai/glm-5.3-flash"
+  ],
+  "byokModel": "z-ai/glm-5.3-flash",
+  "providerSpendUsd": 0.007783,
+  "elapsedSeconds": 134,
+  "passed": true,
+  "scenarios": [
+    {
+      "scenario": "csv-deepseek/deepseek-v4.1-flash-1017",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "source": "platform",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_76b9cf79415a8197c084de2c5186dfc6",
+          "status": "succeeded",
+          "billingStatus": "settled",
+          "costMicros": "5473",
+          "currency": "CNY",
+          "durationMs": 9426,
+          "modelSteps": 3,
+          "inputTokens": 4349,
+          "outputTokens": 546,
+          "toolCalls": [
+            {
+              "name": "files.transform",
+              "status": "succeeded"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "chart.png",
+              "sizeBytes": 25743,
+              "sha256": "30fb318ace5d65a438745d041558309db2376686abbb363a6eae083286cdd2ff"
+            },
+            {
+              "name": "summary.csv",
+              "sizeBytes": 33,
+              "sha256": "de443e9913b586ea9c852ad81964e786ed658a34156bb9d7304528a7f3bf94e5"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "csv-minimax/minimax-m3.1-flash",
+      "model": "minimax/minimax-m3.1-flash",
+      "source": "platform",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_014b7a008f6768b8e3ea17edda0caa5e",
+          "status": "succeeded",
+          "billingStatus": "settled",
+          "costMicros": "12876",
+          "currency": "CNY",
+          "durationMs": 32897,
+          "modelSteps": 7,
+          "inputTokens": 13005,
+          "outputTokens": 1419,
+          "toolCalls": [
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "options: json: cannot unmarshal object into Go struct field SummarizeOptions.groupBy of type []string",
+              "input": "{\"output\": \"summary.csv\", \"options\": {\"groupBy\": {\"item\": \"region\"}, \"aggregates\": {\"item\": {\"op\": [\"sum\", \"sum\"], \"column\": \"amount\", \"as\": \"amount\"}}}, \"operation\": \"summarize\", \"inputs\": [\"orders.c"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "options: json: cannot unmarshal object into Go struct field SummarizeOptions.aggregates of type []table.Aggregate",
+              "input": "{\"output\": \"summary.csv\", \"options\": {\"aggregates\": {\"item\": {\"as\": \"amount\", \"column\": \"amount\", \"op\": \"sum\"}}, \"groupBy\": {\"item\": \"region\"}}, \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "options: json: cannot unmarshal object into Go struct field SummarizeOptions.aggregates of type []table.Aggregate",
+              "input": "{\"output\": \"summary.csv\", \"options\": {\"aggregates\": {\"item\": {\"as\": \"amount\", \"column\": \"amount\", \"op\": \"sum\"}}, \"groupBy\": {\"item\": \"region\"}}, \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "summary.csv",
+              "sizeBytes": 35,
+              "sha256": "d81a206bd3b04443922970ce9ff00232f31b460e1d93cc7c7ef19587d4954c8d"
+            },
+            {
+              "name": "chart.png",
+              "sizeBytes": 24683,
+              "sha256": "4491c267630fcc85ea8cd4a69084b7767e32b4e5b9564a2dd7bab7ec1844fc57"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "csv-z-ai/glm-5.3-flash",
+      "model": "z-ai/glm-5.3-flash",
+      "source": "platform",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_33b25e20e040c4ef744ea212c3b2bab1",
+          "status": "succeeded",
+          "billingStatus": "settled",
+          "costMicros": "27585",
+          "currency": "CNY",
+          "durationMs": 63034,
+          "modelSteps": 8,
+          "inputTokens": 26919,
+          "outputTokens": 3548,
+          "toolCalls": [
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "summary.csv",
+              "sizeBytes": 35,
+              "sha256": "d81a206bd3b04443922970ce9ff00232f31b460e1d93cc7c7ef19587d4954c8d"
+            },
+            {
+              "name": "chart.png",
+              "sizeBytes": 22599,
+              "sha256": "ef2e41a9c8e610731a09e27c2db6a0f23117fbe3e4f2daaa0227dd78f9f6d88e"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "standalone-tools",
+      "passed": true,
+      "calls": [
+        {
+          "name": "code.execute",
+          "status": "succeeded"
+        },
+        {
+          "name": "files.transform",
+          "status": "succeeded"
+        }
+      ]
+    },
+    {
+      "scenario": "excel-z-ai/glm-5.3-flash",
+      "model": "z-ai/glm-5.3-flash",
+      "source": "platform",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_2634035702fa3ad271505cfd1a2a7135",
+          "status": "succeeded",
+          "billingStatus": "settled",
+          "costMicros": "4156",
+          "currency": "CNY",
+          "durationMs": 9952,
+          "modelSteps": 2,
+          "inputTokens": 2544,
+          "outputTokens": 578,
+          "toolCalls": [
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "summary.xlsx",
+              "sizeBytes": 4969,
+              "sha256": "853cef85ff75ff442905066cba421bf5d7545d2a9b8c9836a6d81eb1ad59e863"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "excel-deepseek/deepseek-v4.1-flash-1017",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "source": "platform",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_504cbc6e74d092054207ef7189c26ea7",
+          "status": "succeeded",
+          "billingStatus": "settled",
+          "costMicros": "7800",
+          "currency": "CNY",
+          "durationMs": 12954,
+          "modelSteps": 3,
+          "inputTokens": 4484,
+          "outputTokens": 582,
+          "toolCalls": [
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "summary.xlsx",
+              "sizeBytes": 4969,
+              "sha256": "8308e3b09ae4b2a4ac51c3de60162a61cd668a8585c231560f52a58c2aba233a"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "excel-minimax/minimax-m3.1-flash",
+      "model": "minimax/minimax-m3.1-flash",
+      "source": "platform",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_315272db766857472a2a432c4afe67d7",
+          "status": "succeeded",
+          "billingStatus": "settled",
+          "costMicros": "10009",
+          "currency": "CNY",
+          "durationMs": 31637,
+          "modelSteps": 5,
+          "inputTokens": 9676,
+          "outputTokens": 1023,
+          "toolCalls": [
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "summary.xlsx",
+              "sizeBytes": 4984,
+              "sha256": "f96f240be73c540ae6c2946b51dbe57d3e5e1a65c0e2c9997353ea2b42765420"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    },
+    {
+      "scenario": "csv-byok",
+      "model": "z-ai/glm-5.3-flash",
+      "source": "byok",
+      "attempts": [
+        {
+          "attempt": 1,
+          "runId": "run_458287068917fc15b20bf3200610ac34",
+          "status": "succeeded",
+          "billingStatus": "settled",
+          "costMicros": "3550",
+          "currency": "CNY",
+          "durationMs": 50460,
+          "modelSteps": 6,
+          "inputTokens": 9398,
+          "outputTokens": 3397,
+          "toolCalls": [
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "files.transform",
+              "status": "failed",
+              "errorCode": "TOOL_FAILED",
+              "message": "summarize needs options.aggregates: 1 to 32 items such as {\"op\":\"sum\",\"column\":\"amount\",\"as\":\"total\"} (op is count, sum, avg, min or max); options.groupBy lists the columns to group by",
+              "input": "{\"output\": \"summary.csv\", \"operation\": \"summarize\", \"inputs\": [\"orders.csv\"]}"
+            },
+            {
+              "name": "code.execute",
+              "status": "succeeded"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "summary.csv",
+              "sizeBytes": 35,
+              "sha256": "2bd054a1b5d843f2c9a0cb0628e1bc13a83030d90cb486c3f4c4f9e4552874e5"
+            },
+            {
+              "name": "summary_check.csv",
+              "sizeBytes": 35,
+              "sha256": "2bd054a1b5d843f2c9a0cb0628e1bc13a83030d90cb486c3f4c4f9e4552874e5"
+            },
+            {
+              "name": "chart.png",
+              "sizeBytes": 27459,
+              "sha256": "30d57af2853a576dae758ad6c437a8cddc1886f68244a70628ca9204dac62513"
+            }
+          ],
+          "error": null,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "attemptsUsed": 1
+    }
+  ]
+}

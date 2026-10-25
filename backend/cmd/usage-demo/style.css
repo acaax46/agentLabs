@@ -1,0 +1,95 @@
+body {
+  margin: 0;
+  background: var(--al-color-canvas);
+  color: var(--al-color-text);
+  font: var(--al-text-sm) / var(--al-leading-ui) var(--al-font-sans);
+}
+main {
+  max-width: var(--al-reading-width);
+  margin: var(--al-space-10) auto;
+  padding: var(--al-space-4);
+}
+h1 {
+  font-size: var(--al-text-3xl);
+}
+h2 {
+  font-size: var(--al-text-xl);
+}
+h3 {
+  font-size: var(--al-text-base);
+}
+p {
+  color: var(--al-color-text-muted);
+  overflow-wrap: anywhere;
+}
+section {
+  background: var(--al-color-surface);
+  border: 1px solid var(--al-color-border);
+  border-radius: var(--al-radius-card);
+  padding: var(--al-space-6);
+  margin-top: var(--al-space-6);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--al-space-3);
+}
+button {
+  min-height: var(--al-control-height-touch);
+  border: 1px solid var(--al-color-primary);
+  border-radius: var(--al-radius-control);
+  background: var(--al-color-primary);
+  color: var(--al-color-on-primary);
+  padding: var(--al-space-2) var(--al-space-4);
+  font: inherit;
+  cursor: pointer;
+}
+button.secondary {
+  background: var(--al-color-surface);
+  color: var(--al-color-primary);
+}
+button:disabled {
+  background: var(--al-color-disabled-bg);
+  border-color: var(--al-color-border);
+  color: var(--al-color-disabled-text);
+  cursor: not-allowed;
+}
+button:focus-visible {
+  outline: 2px solid var(--al-color-focus);
+  outline-offset: 3px;
+}
+.metrics {
+  display: grid;
+  gap: var(--al-space-4);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.metrics span,
+.metrics strong {
+  display: block;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.metrics span {
+  color: var(--al-color-text-muted);
+}
+article {
+  padding-block: var(--al-space-4);
+  border-top: 1px solid var(--al-color-border);
+}
+#error {
+  color: var(--al-color-danger);
+}
+@media (max-width: 600px) {
+  main {
+    margin-block: var(--al-space-4);
+  }
+  section {
+    padding: var(--al-space-4);
+  }
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+  h1 {
+    font-size: var(--al-text-2xl);
+  }
+}

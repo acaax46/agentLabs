@@ -1,0 +1,71 @@
+name: Frontend CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      AGENTLAB_MONGO_URI: mongodb://127.0.0.1:27018/?replicaSet=rs0&directConnection=true
+      AGENTLAB_E2E_DATABASE: agentlab_ci_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: backend/go.sum
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Start MongoDB replica set
+        run: docker compose -f compose.test.yaml up -d --wait --wait-timeout 120
+      - name: Check generated API types
+        run: |
+          pnpm contracts
+          git diff --exit-code -- frontend/src/api/generated.ts
+      - name: Check formatting, lint and types
+        run: |
+          pnpm format:check
+          pnpm --filter @agentlab/frontend lint
+          pnpm --filter @agentlab/frontend check
+      - name: Build frontend
+        run: pnpm --filter @agentlab/frontend build
+      - name: Check platform contract samples
+        run: pnpm check:platform-contract
+      - name: Install Playwright Chromium
+        run: pnpm --filter @agentlab/frontend exec playwright install --with-deps chromium
+      - name: Run real authentication and connection browser tests
+        run: pnpm test:e2e
+      - name: Run current workbench interaction and layout tests
+        run: pnpm --filter @agentlab/frontend test:e2e:platform
+      - name: Database diagnostics
+        if: failure()
+        run: docker compose -f compose.test.yaml logs --no-color
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-failure-report
+          path: |
+            frontend/test-results/
+            .cache/p0-ui-results/
+            .cache/agentlab-*.png
+            .cache/account-connections-*.png
+          if-no-files-found: ignore
+      - name: Stop test database
+        if: always()
+        run: docker compose -f compose.test.yaml down

@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!start.sh
+!profile_tool.py
+!vendor/
+!vendor/cc-switch.deb
+!vendor/cc-switch.deb.sha256

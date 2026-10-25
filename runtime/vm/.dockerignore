@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!init
+!vendor/
+!vendor/vmlinuz-virt
+!vendor/vmlinuz-virt.sha256

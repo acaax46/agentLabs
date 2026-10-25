@@ -1,0 +1,188 @@
+name: Backend CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      AGENTLAB_MONGO_URI: mongodb://127.0.0.1:27018/?replicaSet=rs0&directConnection=true
+      AGENTLAB_REQUIRE_MONGO_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: backend/go.sum
+      - name: Start MongoDB replica set
+        run: docker compose -f compose.test.yaml up -d --wait --wait-timeout 120
+      - name: Go lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
+          working-directory: backend
+      - name: Go vet
+        run: go -C backend vet ./...
+      - name: Go tests with coverage
+        working-directory: backend
+        env:
+          COVERAGE_THRESHOLD: '70'
+        run: |
+          go test ./... -count=1 -covermode=atomic -coverpkg=./internal/... -coverprofile=coverage.out
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "Total Go coverage: ${total}% (minimum ${COVERAGE_THRESHOLD}%)"
+          awk -v total="$total" -v min="$COVERAGE_THRESHOLD" 'BEGIN { if (total + 0 < min + 0) { printf "Go coverage %.2f%% is below %.2f%%\n", total, min; exit 1 } }'
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.out
+          if-no-files-found: ignore
+      - name: Race tests
+        run: go -C backend test -race ./internal/httpapi ./internal/learning ./internal/execution ./internal/connection ./internal/platform/... -count=1
+      - name: Build API
+        run: go -C backend build -trimpath -o ../build/agentlab-api ./cmd/server
+      - name: Database diagnostics
+        if: failure()
+        run: docker compose -f compose.test.yaml logs --no-color
+      - name: Stop test database
+        if: always()
+        run: docker compose -f compose.test.yaml down
+
+  isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      AGENTLAB_MONGO_URI: mongodb://127.0.0.1:27018/?replicaSet=rs0&directConnection=true
+      AGENTLAB_REQUIRE_MONGO_TESTS: '1'
+      AGENTLAB_TEST_GUEST: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: backend/go.sum
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Start MongoDB
+        run: docker compose -f compose.test.yaml up -d --wait --wait-timeout 120
+      - name: Build actual Linux guest
+        run: pnpm build:guest
+      - name: Verify OpenSandbox execution inside VM
+        run: go -C backend test ./internal/execution -run '^TestRealGuest' -count=1 -v -timeout 5m
+      - name: Install browser
+        run: pnpm --filter @agentlab/frontend exec playwright install --with-deps chromium
+      - name: Real student submission and rejudge in browser
+        run: pnpm test:e2e:live
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: real-isolation-failure
+          path: |
+            frontend/test-results/
+            .cache/agentlab-learning-live.png
+            .cache/playwright-live/
+          if-no-files-found: ignore
+      - name: Stop database
+        if: always()
+        run: docker compose -f compose.test.yaml down
+
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AGENTLAB_MONGO_URI: mongodb://127.0.0.1:27018/?replicaSet=rs0&directConnection=true
+      AGENTLAB_REQUIRE_MONGO_TESTS: '1'
+      AGENTLAB_TEST_SANDBOX_IMAGE: agentlab/sandbox-python:20261024
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: backend/go.sum
+      - name: Start MongoDB replica set
+        run: docker compose -f compose.test.yaml up -d --wait --wait-timeout 120
+      - name: Build the code sandbox image
+        run: docker build -t agentlab/sandbox-python:20261024 runtime/sandbox
+      - name: Real container isolation, resource limits and an agent run
+        run: go -C backend test ./internal/platform ./internal/platform/sandbox -run 'TestRealContainer|TestAgentRunWithTheRealSandbox|TestAgentRunWithAnExcelWorkbook' -count=1 -v -timeout 15m
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+      - name: The real server binary end to end, including graceful shutdown
+        run: node scripts/smoke-platform.mjs
+      - name: Database diagnostics
+        if: failure()
+        run: docker compose -f compose.test.yaml logs --no-color
+      - name: Stop test database
+        if: always()
+        run: docker compose -f compose.test.yaml down
+
+  platform-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AGENTLAB_MONGO_URI: mongodb://127.0.0.1:27018/?replicaSet=rs0&directConnection=true
+      AGENTLAB_REQUIRE_MONGO_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: backend/go.sum
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Start MongoDB replica set
+        run: docker compose -f compose.test.yaml up -d --wait --wait-timeout 120
+      - name: Contract, backend responses and workbench types agree
+        run: pnpm check:platform-contract
+      - name: Database diagnostics
+        if: failure()
+        run: docker compose -f compose.test.yaml logs --no-color
+      - name: Stop test database
+        if: always()
+        run: docker compose -f compose.test.yaml down
+
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: backend/go.sum
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build desktop
+        run: pnpm build:desktop

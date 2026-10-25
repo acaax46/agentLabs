@@ -1,0 +1,66 @@
+/* Tailwind only maps the shared --al-* theme. Component styles stay semantic. */
+@import 'tailwindcss/theme.css';
+@import 'tailwindcss/utilities.css';
+
+@source './**/*.{ts,tsx}';
+@source '../index.html';
+
+@theme {
+  --font-sans: var(--al-font-sans);
+  --font-mono: var(--al-font-mono);
+
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-canvas: var(--al-color-canvas);
+  --color-surface: var(--al-color-surface);
+  --color-surface-subtle: var(--al-color-surface-subtle);
+  --color-surface-raised: var(--al-color-surface-raised);
+  --color-border: var(--al-color-border);
+  --color-input-border: var(--al-color-input-border);
+  --color-ink: var(--al-color-text);
+  --color-muted: var(--al-color-text-muted);
+  --color-primary: var(--al-color-primary);
+  --color-primary-hover: var(--al-color-primary-hover);
+  --color-primary-active: var(--al-color-primary-active);
+  --color-primary-subtle: var(--al-color-primary-subtle);
+  --color-on-primary: var(--al-color-on-primary);
+  --color-accent: var(--al-color-accent);
+  --color-accent-subtle: var(--al-color-accent-subtle);
+  --color-success: var(--al-color-success);
+  --color-warning: var(--al-color-warning);
+  --color-danger: var(--al-color-danger);
+  --color-info: var(--al-color-info);
+  --color-disabled: var(--al-color-disabled-text);
+  --color-workspace: var(--al-color-workspace-bg);
+  --color-workspace-text: var(--al-color-workspace-text);
+  --color-focus: var(--al-color-focus);
+
+  --text-*: initial;
+  --text-xs: var(--al-text-xs);
+  --text-sm: var(--al-text-sm);
+  --text-ui: var(--al-text-ui);
+  --text-base: var(--al-text-base);
+  --text-lg: var(--al-text-lg);
+  --text-xl: var(--al-text-xl);
+  --text-2xl: var(--al-text-2xl);
+  --text-3xl: var(--al-text-3xl);
+
+  --radius-*: initial;
+  --radius-sm: var(--al-radius-sm);
+  --radius-control: var(--al-radius-control);
+  --radius-card: var(--al-radius-card);
+  --radius-panel: var(--al-radius-panel);
+
+  --shadow-*: initial;
+  --shadow-none: none;
+  --shadow-dialog: var(--al-shadow-dialog);
+  --shadow-raised: var(--al-shadow-raised);
+  --shadow-focus: var(--al-shadow-focus);
+
+  --container-content: var(--al-content-width);
+  --container-reading: var(--al-reading-width);
+
+  --default-transition-duration: var(--al-duration-normal);
+  --default-transition-timing-function: var(--al-ease);
+}

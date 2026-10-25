@@ -1,0 +1,18 @@
+# AgentLab judge configuration baseline, aligned with Hydro terminology.
+# This file is a design example; it does not configure OpenSandbox itself.
+type: default
+time: 1000ms
+memory: 256MB
+checker_type: strict
+detail: none
+subtasks:
+  - id: 1
+    type: sum
+    score: 100
+    cases:
+      - input: 1.in
+        output: 1.out
+        score: 50
+      - input: 2.in
+        output: 2.out
+        score: 50

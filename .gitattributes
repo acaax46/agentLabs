@@ -1,0 +1,6 @@
+*.sh text eol=lf
+*.go text eol=lf
+Dockerfile text eol=lf
+runtime/vm/init text eol=lf
+*.py text eol=lf
+*.sha256 text eol=lf

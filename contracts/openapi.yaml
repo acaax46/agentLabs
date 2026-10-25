@@ -1,0 +1,4388 @@
+openapi: 3.0.3
+info:
+  title: AgentLab local development API
+  version: 0.1.0
+  description: AgentLab 本地账号、资料管理、任务发布、工作区与持久调度 API；运行能力由实际接入的执行器声明。
+servers:
+  - url: http://127.0.0.1:8787
+paths:
+  /api/v1/connections:
+    get:
+      operationId: listConnections
+      description: 仅返回本机构共享连接和当前用户个人连接的元信息，不返回密钥。
+      responses:
+        '200':
+          description: 可见连接列表。
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Connection'
+    post:
+      operationId: createConnection
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: X-AgentLab-Request
+          required: true
+          schema:
+            type: string
+            enum: [connections]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionInput'
+      responses:
+        '200': &connectionResponse
+          description: 连接元信息。active 仅表示鉴权和所选模型列表通过验证。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+  /api/v1/connections/{id}/verify:
+    parameters: &connectionPath
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-AgentLab-Request
+        required: true
+        schema:
+          type: string
+          enum: [connections]
+    post:
+      operationId: verifyConnection
+      description: 通过固定模型列表端点验证授权，不发送项目内容，不发起付费推理。
+      requestBody: &connectionMutation
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionMutation'
+      responses:
+        '200': *connectionResponse
+  /api/v1/connections/{id}/rotate:
+    parameters: *connectionPath
+    post:
+      operationId: rotateConnectionKey
+      description: 更换密钥并增加连接代次；重新验证后可用，旧代次任务不能继续发送。
+      requestBody: *connectionMutation
+      responses:
+        '200': *connectionResponse
+  /api/v1/connections/{id}/revoke:
+    parameters: *connectionPath
+    post:
+      operationId: revokeConnection
+      description: 撤销连接并删除加密秘密，保留元信息与审计；已发送未知用量不自动退款。
+      requestBody: *connectionMutation
+      responses:
+        '200': *connectionResponse
+  /health/live:
+    get:
+      operationId: getLiveness
+      responses:
+        '200':
+          description: 服务进程可响应；不表示沙箱可运行。
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+      security: []
+  /health/ready:
+    get:
+      operationId: getReadiness
+      responses:
+        '503':
+          $ref: '#/components/responses/Unavailable'
+      security: []
+  /api/v1/bootstrap:
+    get:
+      operationId: getBootstrap
+      responses:
+        '200':
+          description: 初始化状态和规划中的课程模板。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bootstrap'
+        '401': &id001
+          description: 未登录或密码不正确。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403': &id002
+          description: 角色或资源权限不足。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /api/v1/sessions:
+    post:
+      operationId: startSession
+      description: 初始化阶段始终拒绝启动，不会在宿主执行命令。
+      responses:
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '401': *id001
+        '403': *id002
+  /api/v1/catalog/summary:
+    get:
+      operationId: getCatalogSummary
+      responses:
+        '200':
+          description: 真实资料数量。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogSummary'
+        '503':
+          description: 管理数据库未连接。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401': *id001
+        '403': *id002
+  /api/v1/problems:
+    get:
+      operationId: listProblemRecords
+      parameters: &id014
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 300
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - draft
+              - active
+              - archived
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+            enum:
+              - easy
+              - medium
+              - hard
+        - name: classId
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100000
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 分页结果。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPage'
+        '400': &id003
+          description: 请求参数错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404': &id004
+          description: 记录不存在。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409': &id005
+          description: 版本冲突、幂等键冲突或记录仍被引用。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '415': &id006
+          description: 需要 JSON 和产品请求标识。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '422': &id007
+          description: 字段或关联校验失败。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '428': &id008
+          description: 缺少记录版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500': &id009
+          description: 操作未完成。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '503': &id010
+          description: 数据库不可用。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401': *id001
+        '403': *id002
+    post:
+      operationId: createProblemRecord
+      parameters:
+        - &id011
+          name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9_-]{8,80}$
+        - &id012
+          name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - catalog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: 已保存的记录，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/problems/{id}:
+    parameters:
+      - &id015
+        name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 120
+    get:
+      operationId: getProblemRecord
+      responses:
+        '200':
+          description: 记录详情，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    put:
+      operationId: updateProblemRecord
+      parameters:
+        - *id011
+        - *id012
+        - &id013
+          name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"[1-9][0-9]*"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '200':
+          description: 已保存的新版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    delete:
+      operationId: deleteProblemRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      responses:
+        '204':
+          description: 已删除；被引用记录不能删除。
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/classes:
+    get:
+      operationId: listClassRecords
+      parameters: *id014
+      responses:
+        '200':
+          description: 分页结果。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPage'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    post:
+      operationId: createClassRecord
+      parameters:
+        - *id011
+        - *id012
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: 已保存的记录，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/classes/{id}:
+    parameters:
+      - *id015
+    get:
+      operationId: getClassRecord
+      responses:
+        '200':
+          description: 记录详情，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    put:
+      operationId: updateClassRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '200':
+          description: 已保存的新版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    delete:
+      operationId: deleteClassRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      responses:
+        '204':
+          description: 已删除；被引用记录不能删除。
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/students:
+    get:
+      operationId: listStudentRecords
+      parameters: *id014
+      responses:
+        '200':
+          description: 分页结果。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPage'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    post:
+      operationId: createStudentRecord
+      parameters:
+        - *id011
+        - *id012
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: 已保存的记录，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/students/{id}:
+    parameters:
+      - *id015
+    get:
+      operationId: getStudentRecord
+      responses:
+        '200':
+          description: 记录详情，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    put:
+      operationId: updateStudentRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '200':
+          description: 已保存的新版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    delete:
+      operationId: deleteStudentRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      responses:
+        '204':
+          description: 已删除；被引用记录不能删除。
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/courses:
+    get:
+      operationId: listCourseRecords
+      parameters: *id014
+      responses:
+        '200':
+          description: 分页结果。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPage'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    post:
+      operationId: createCourseRecord
+      parameters:
+        - *id011
+        - *id012
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: 已保存的记录，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/courses/{id}:
+    parameters:
+      - *id015
+    get:
+      operationId: getCourseRecord
+      responses:
+        '200':
+          description: 记录详情，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    put:
+      operationId: updateCourseRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '200':
+          description: 已保存的新版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    delete:
+      operationId: deleteCourseRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      responses:
+        '204':
+          description: 已删除；被引用记录不能删除。
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/templates:
+    get:
+      operationId: listTemplateRecords
+      parameters: *id014
+      responses:
+        '200':
+          description: 分页结果。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPage'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    post:
+      operationId: createTemplateRecord
+      parameters:
+        - *id011
+        - *id012
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: 已保存的记录，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/templates/{id}:
+    parameters:
+      - *id015
+    get:
+      operationId: getTemplateRecord
+      responses:
+        '200':
+          description: 记录详情，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    put:
+      operationId: updateTemplateRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '200':
+          description: 已保存的新版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    delete:
+      operationId: deleteTemplateRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      responses:
+        '204':
+          description: 已删除；被引用记录不能删除。
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/assignments:
+    get:
+      operationId: listAssignmentRecords
+      parameters: *id014
+      responses:
+        '200':
+          description: 分页结果。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPage'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    post:
+      operationId: createAssignmentRecord
+      parameters:
+        - *id011
+        - *id012
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: 已保存的记录，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/assignments/{id}:
+    parameters:
+      - *id015
+    get:
+      operationId: getAssignmentRecord
+      responses:
+        '200':
+          description: 记录详情，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    put:
+      operationId: updateAssignmentRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '200':
+          description: 已保存的新版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    delete:
+      operationId: deleteAssignmentRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      responses:
+        '204':
+          description: 已删除；被引用记录不能删除。
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/contests:
+    get:
+      operationId: listContestRecords
+      parameters: *id014
+      responses:
+        '200':
+          description: 分页结果。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogPage'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    post:
+      operationId: createContestRecord
+      parameters:
+        - *id011
+        - *id012
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: 已保存的记录，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/contests/{id}:
+    parameters:
+      - *id015
+    get:
+      operationId: getContestRecord
+      responses:
+        '200':
+          description: 记录详情，ETag 为当前版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    put:
+      operationId: updateContestRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '200':
+          description: 已保存的新版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogRecord'
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+    delete:
+      operationId: deleteContestRecord
+      parameters:
+        - *id011
+        - *id012
+        - *id013
+      responses:
+        '204':
+          description: 已删除；被引用记录不能删除。
+        '400': *id003
+        '404': *id004
+        '409': *id005
+        '415': *id006
+        '422': *id007
+        '428': *id008
+        '500': *id009
+        '503': *id010
+        '401': *id001
+        '403': *id002
+  /api/v1/evaluations:
+    get:
+      operationId: listEvaluations
+      description: 只读运行记录，不会触发执行或计费。
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - queued
+              - running
+              - completed
+              - rejected
+              - cancelled
+              - system_failed
+        - name: verdict
+          in: query
+          schema:
+            type: string
+            enum:
+              - accepted
+              - wrong_answer
+              - compile_error
+              - runtime_error
+              - time_limit
+              - memory_limit
+              - output_limit
+        - name: studentId
+          in: query
+          schema:
+            type: string
+        - name: problemId
+          in: query
+          schema:
+            type: string
+        - name: assignmentId
+          in: query
+          schema:
+            type: string
+        - name: contestId
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 150
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+            description: Inclusive start.
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+            description: Exclusive end.
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 时间倒序分页记录。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeRecordPage'
+        '400': &id016
+          description: 筛选或分页参数错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404': &id017
+          description: 记录不存在。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '405': &id018
+          description: 运行记录不提供手工编辑或删除。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '503': &id019
+          description: 记录数据库不可用。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401': *id001
+        '403': *id002
+  /api/v1/evaluations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getEvaluations
+      responses:
+        '200':
+          description: 记录详情。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeRecord'
+        '400': *id016
+        '404': *id017
+        '405': *id018
+        '503': *id019
+        '401': *id001
+        '403': *id002
+  /api/v1/usage-records:
+    get:
+      operationId: listUsageRecords
+      description: 只读运行记录，不会触发执行或计费。
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - succeeded
+              - failed
+              - cancelled
+              - unknown
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum:
+              - provider-reported
+              - estimated
+              - unknown
+        - name: settlement
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending
+              - estimated
+              - settled
+              - not-applicable
+        - name: studentId
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: model
+          in: query
+          schema:
+            type: string
+        - name: operationId
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 150
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+            description: Inclusive start.
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+            description: Exclusive end.
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 时间倒序分页记录。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeRecordPage'
+        '400': *id016
+        '404': *id017
+        '405': *id018
+        '503': *id019
+        '401': *id001
+        '403': *id002
+  /api/v1/usage-records/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getUsageRecords
+      responses:
+        '200':
+          description: 记录详情。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeRecord'
+        '400': *id016
+        '404': *id017
+        '405': *id018
+        '503': *id019
+        '401': *id001
+        '403': *id002
+  /api/v1/audit-logs:
+    get:
+      operationId: listAuditLogs
+      description: 只读运行记录，不会触发执行或计费。
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum:
+              - operation
+              - system
+              - security
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum:
+              - info
+              - warning
+              - error
+        - name: result
+          in: query
+          schema:
+            type: string
+            enum:
+              - success
+              - denied
+              - failure
+              - unknown
+        - name: requestId
+          in: query
+          schema:
+            type: string
+        - name: resourceType
+          in: query
+          schema:
+            type: string
+        - name: resourceId
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 150
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+            description: Inclusive start.
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+            description: Exclusive end.
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 时间倒序分页记录。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeRecordPage'
+        '400': *id016
+        '404': *id017
+        '405': *id018
+        '503': *id019
+        '401': *id001
+        '403': *id002
+  /api/v1/audit-logs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getAuditLogs
+      responses:
+        '200':
+          description: 记录详情。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeRecord'
+        '400': *id016
+        '404': *id017
+        '405': *id018
+        '503': *id019
+        '401': *id001
+        '403': *id002
+  /api/v1/auth/me:
+    get:
+      operationId: getAuthState
+      security: []
+      responses:
+        '200':
+          description: 当前账号，未登录时 user 为 null。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthState'
+        '400': &id020
+          description: 请求格式不正确。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401': *id001
+        '403': *id002
+        '409': &id021
+          description: 用户名或版本冲突。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '415': &id022
+          description: 需要产品 JSON 请求。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '422': &id023
+          description: 字段校验失败。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '429': &id024
+          description: 尝试过多。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '503': &id025
+          description: 账号服务不可用。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      parameters:
+        - &id026
+          name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginInput'
+      responses:
+        '200':
+          description: 操作成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthState'
+        '400': *id020
+        '401': *id001
+        '403': *id002
+        '409': *id021
+        '415': *id022
+        '422': *id023
+        '429': *id024
+        '503': *id025
+      security: []
+  /api/v1/auth/register:
+    post:
+      operationId: registerStudent
+      parameters:
+        - *id026
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterInput'
+      responses:
+        '201':
+          description: 操作成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthState'
+        '400': *id020
+        '401': *id001
+        '403': *id002
+        '409': *id021
+        '415': *id022
+        '422': *id023
+        '429': *id024
+        '503': *id025
+      security: []
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      parameters:
+        - *id026
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: []
+              properties: {}
+      responses:
+        '204':
+          description: 操作成功。
+        '400': *id020
+        '401': *id001
+        '403': *id002
+        '409': *id021
+        '415': *id022
+        '422': *id023
+        '429': *id024
+        '503': *id025
+  /api/v1/auth/password:
+    post:
+      operationId: changePassword
+      parameters:
+        - *id026
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - currentPassword
+                - password
+              properties:
+                currentPassword:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '204':
+          description: 操作成功。
+        '400': *id020
+        '401': *id001
+        '403': *id002
+        '409': *id021
+        '415': *id022
+        '422': *id023
+        '429': *id024
+        '503': *id025
+  /api/v1/users:
+    get:
+      operationId: listUsers
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: 同机构账号列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+        '400': *id020
+        '401': *id001
+        '403': *id002
+        '409': *id021
+        '415': *id022
+        '422': *id023
+        '429': *id024
+        '503': *id025
+    post:
+      operationId: createUser
+      parameters:
+        - *id026
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserInput'
+      responses:
+        '201':
+          description: 操作成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUser'
+        '400': *id020
+        '401': *id001
+        '403': *id002
+        '409': *id021
+        '415': *id022
+        '422': *id023
+        '429': *id024
+        '503': *id025
+  /api/v1/users/{id}:
+    parameters:
+      - &id027
+        name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: updateUser
+      parameters:
+        - *id026
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserInput'
+      responses:
+        '200':
+          description: 操作成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUser'
+        '400': *id020
+        '401': *id001
+        '403': *id002
+        '409': *id021
+        '415': *id022
+        '422': *id023
+        '429': *id024
+        '503': *id025
+  /api/v1/users/{id}/password:
+    parameters:
+      - *id027
+    post:
+      operationId: resetUserPassword
+      parameters:
+        - *id026
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+      responses:
+        '204':
+          description: 操作成功。
+        '400': *id020
+        '401': *id001
+        '403': *id002
+        '409': *id021
+        '415': *id022
+        '422': *id023
+        '429': *id024
+        '503': *id025
+  /api/v1/training/problems:
+    get:
+      operationId: listTrainingProblems
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+            enum:
+              - easy
+              - medium
+              - hard
+      responses:
+        '200':
+          description: 公开训练题列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingProblemList'
+        '400':
+          description: 查询条件不正确。
+        '401':
+          description: 未登录或会话无效。
+  /api/v1/training/problems/{id}:
+    get:
+      operationId: getTrainingProblem
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 训练题详情。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingProblem'
+        '401':
+          description: 未登录或会话无效。
+        '404':
+          description: 训练题不存在。
+  /api/v1/training/problems/{id}/workspace:
+    post:
+      operationId: openTrainingWorkspace
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 已打开训练代码空间。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningWorkspace'
+        '401':
+          description: 未登录或会话无效。
+        '403':
+          description: 仅学生可以打开训练代码空间。
+        '404':
+          description: 训练题不存在。
+        '503':
+          description: 训练服务尚未连接。
+  /api/v1/training/courses:
+    get:
+      operationId: listTrainingCourses
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 当前学生可读的课程资源与进度。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingCourseList'
+        '401':
+          description: 未登录或会话无效。
+        '403':
+          description: 当前角色无权读取课程资源。
+  /api/v1/training/courses/{id}:
+    get:
+      operationId: getTrainingCourse
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 课程详情、小节文档与学习进度。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingCourse'
+        '401':
+          description: 未登录或会话无效。
+        '403':
+          description: 当前学生不在课程分配范围。
+        '404':
+          description: 课程不存在。
+  /api/v1/training/courses/{id}/progress:
+    put:
+      operationId: saveTrainingProgress
+      security:
+        - SessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingProgressInput'
+      responses:
+        '200':
+          description: 学习进度已保存。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingProgress'
+        '400':
+          description: JSON 或小节参数不正确。
+        '401':
+          description: 未登录或会话无效。
+        '403':
+          description: 仅学生可以保存学习进度。
+        '422':
+          description: 小节不存在。
+  /api/v1/learning/capabilities:
+    get:
+      operationId: learningOperation0
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningCapabilities'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+  /api/v1/learning/releases:
+    get:
+      operationId: learningOperation1
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearningRelease'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: assignmentId
+          in: query
+          schema:
+            type: string
+  /api/v1/learning/releases/{id}:
+    get:
+      operationId: learningOperation2
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningRelease'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+  /api/v1/learning/assignments/{id}/publish:
+    post:
+      operationId: learningOperation3
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningRelease'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LearningPublishInput'
+  /api/v1/learning/releases/{id}/revoke:
+    post:
+      operationId: learningOperation4
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+  /api/v1/learning/releases/{id}/workspace:
+    post:
+      operationId: learningOperation5
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningWorkspace'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+  /api/v1/learning/workspaces:
+    get:
+      operationId: learningOperation6
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearningWorkspace'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+  /api/v1/learning/workspaces/{id}:
+    get:
+      operationId: learningOperation7
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningWorkspace'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+    put:
+      operationId: learningOperation8
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningWorkspace'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LearningSaveInput'
+  /api/v1/learning/workspaces/{id}/reset:
+    post:
+      operationId: learningOperation9
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningWorkspace'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LearningSaveInput'
+  /api/v1/learning/workspaces/{id}/jobs:
+    get:
+      operationId: learningOperation10
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearningJob'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+    post:
+      operationId: learningOperation11
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningJob'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LearningJobInput'
+  /api/v1/learning/workspaces/{id}/events:
+    get:
+      operationId: learningOperation12
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearningEvent'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+  /api/v1/learning/jobs/{id}:
+    get:
+      operationId: learningOperation13
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningJob'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+  /api/v1/learning/jobs/{id}/cancel:
+    post:
+      operationId: learningOperation14
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+  /api/v1/learning/budgets:
+    get:
+      operationId: learningOperation15
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearningAccount'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+    post:
+      operationId: learningOperation16
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningAccount'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LearningBudgetInput'
+  /api/v1/learning/prices:
+    get:
+      operationId: learningOperation17
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearningPrice'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+    post:
+      operationId: learningOperation18
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPrice'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LearningPrice'
+  /api/v1/learning/ledger:
+    get:
+      operationId: learningOperation19
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearningLedger'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+  /api/v1/learning/problems/{id}/judge-bundles:
+    get:
+      operationId: learningOperation20
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearningJudgeBundle'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+  /api/v1/learning/judge-bundles:
+    post:
+      operationId: learningOperation21
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningJudgeBundle'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LearningJudgeBundleInput'
+  /api/v1/learning/jobs/{id}/rejudge:
+    post:
+      operationId: learningOperation22
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningJob'
+        '400':
+          description: 格式错误
+        '401':
+          description: 未登录
+        '403':
+          description: 无权限
+        '404':
+          description: 无权访问或不存在
+        '409':
+          description: 版本、预算或幂等冲突
+        '422':
+          description: 字段校验失败
+        '503':
+          description: 执行器或服务未就绪
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-AgentLab-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            enum:
+              - learning
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+components:
+  responses:
+    Unavailable:
+      description: 尚未配置经过验证的隔离运行环境。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+  schemas:
+    Connection:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          ownerId,
+          name,
+          provider,
+          baseUrl,
+          scope,
+          models,
+          status,
+          generation,
+          version,
+          expiresAt,
+          verifiedAt,
+          message,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id:
+          type: string
+        ownerId:
+          type: string
+        name:
+          type: string
+        provider:
+          type: string
+        baseUrl:
+          type: string
+        scope:
+          type: string
+          enum: [private, tenant]
+        models:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [pending, active, error, expired, revoked]
+        generation:
+          type: integer
+        version:
+          type: integer
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        verifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ConnectionInput:
+      type: object
+      additionalProperties: false
+      required: [name, provider, baseUrl, scope, models, apiKey]
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        provider:
+          type: string
+          maxLength: 80
+        baseUrl:
+          type: string
+        scope:
+          type: string
+          enum: [private, tenant]
+        models:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            type: string
+        apiKey:
+          type: string
+          writeOnly: true
+          minLength: 4
+          maxLength: 8192
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+    ConnectionMutation:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        apiKey:
+          type: string
+          writeOnly: true
+          description: 仅更换密钥时填写。
+    APIError:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+        - requestId
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+    RuntimeStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - available
+        - provider
+        - reason
+      properties:
+        available:
+          type: boolean
+        provider:
+          type: string
+        reason:
+          type: string
+    Capabilities:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionExecution
+        - grading
+        - accountConnections
+        - catalogManagement
+        - recordQueries
+      properties:
+        sessionExecution:
+          type: boolean
+        grading:
+          type: boolean
+        accountConnections:
+          type: boolean
+        catalogManagement:
+          type: boolean
+        recordQueries:
+          type: boolean
+    Template:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - description
+        - mode
+        - status
+        - agents
+        - network
+        - grading
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        mode:
+          type: string
+          enum:
+            - classroom
+            - competition
+            - family
+        status:
+          type: string
+          enum:
+            - planned
+        agents:
+          type: array
+          items:
+            type: string
+        network:
+          type: string
+        grading:
+          type: string
+    Bootstrap:
+      type: object
+      additionalProperties: false
+      required:
+        - product
+        - version
+        - mode
+        - runtime
+        - capabilities
+        - templates
+      properties:
+        product:
+          type: string
+        version:
+          type: string
+        mode:
+          type: string
+          enum:
+            - scaffold
+        runtime:
+          $ref: '#/components/schemas/RuntimeStatus'
+        capabilities:
+          $ref: '#/components/schemas/Capabilities'
+        templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/Template'
+    Sample:
+      type: object
+      additionalProperties: false
+      required: []
+      properties:
+        input:
+          type: string
+          maxLength: 10000
+        output:
+          type: string
+          maxLength: 10000
+        explanation:
+          type: string
+          maxLength: 2000
+    ProblemFields:
+      type: object
+      additionalProperties: false
+      required:
+        - difficulty
+        - timeLimitMs
+        - memoryLimitMb
+      properties:
+        difficulty:
+          type: string
+          enum:
+            - easy
+            - medium
+            - hard
+        language:
+          type: string
+          enum:
+            - python
+            - html
+        statement:
+          type: string
+          maxLength: 30000
+        inputDescription:
+          type: string
+          maxLength: 10000
+        outputDescription:
+          type: string
+          maxLength: 10000
+        timeLimitMs:
+          type: integer
+          minimum: 100
+          maximum: 60000
+        memoryLimitMb:
+          type: integer
+          minimum: 16
+          maximum: 2048
+        tags:
+          type: array
+          maxItems: 12
+          items:
+            type: string
+            maxLength: 24
+        samples:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/Sample'
+    ClassFields:
+      type: object
+      additionalProperties: false
+      required:
+        - teacher
+        - capacity
+      properties:
+        teacher:
+          type: string
+          maxLength: 80
+        term:
+          type: string
+          maxLength: 80
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 1000
+    StudentFields:
+      type: object
+      additionalProperties: false
+      required: []
+      properties:
+        email:
+          type: string
+          maxLength: 254
+        classIds:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 120
+    TemplateFields:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - network
+      properties:
+        mode: &id028
+          type: string
+          enum:
+            - classroom
+            - competition
+            - family
+        agents:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 120
+        network:
+          type: string
+          enum:
+            - approved-only
+            - offline
+        environmentNote:
+          type: string
+          maxLength: 4000
+    CourseFields:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+      properties:
+        mode: *id028
+        templateId:
+          type: string
+          maxLength: 120
+        problemIds:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            maxLength: 120
+    AssignmentFields:
+      type: object
+      additionalProperties: false
+      required:
+        - classId
+        - courseId
+        - submissionLimit
+      properties:
+        classId:
+          type: string
+          maxLength: 120
+        courseId:
+          type: string
+          maxLength: 120
+        deadline: &id029
+          type: string
+          description: RFC3339 with timezone, or empty for an unset draft date.
+        submissionLimit:
+          type: integer
+          minimum: 1
+          maximum: 1000
+    ContestFields:
+      type: object
+      additionalProperties: false
+      required: []
+      properties:
+        startsAt: *id029
+        endsAt: *id029
+        problemIds:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            maxLength: 120
+        classIds:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 120
+    CatalogKind:
+      type: string
+      enum:
+        - problems
+        - classes
+        - students
+        - courses
+        - templates
+        - assignments
+        - contests
+    CatalogInput:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+        - status
+        - fields
+      properties:
+        code: &id030
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$
+        name: &id031
+          type: string
+          maxLength: 120
+          minLength: 1
+        description: &id032
+          type: string
+          maxLength: 4000
+        status: &id033
+          type: string
+          enum:
+            - draft
+            - active
+            - archived
+        fields: &id034
+          anyOf:
+            - $ref: '#/components/schemas/ProblemFields'
+            - $ref: '#/components/schemas/ClassFields'
+            - $ref: '#/components/schemas/StudentFields'
+            - $ref: '#/components/schemas/TemplateFields'
+            - $ref: '#/components/schemas/CourseFields'
+            - $ref: '#/components/schemas/AssignmentFields'
+            - $ref: '#/components/schemas/ContestFields'
+    CatalogRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - name
+        - status
+        - fields
+        - id
+        - kind
+        - version
+        - createdAt
+        - updatedAt
+        - canEdit
+      properties:
+        code: *id030
+        name: *id031
+        description: *id032
+        status: *id033
+        fields: *id034
+        id:
+          type: string
+          maxLength: 120
+        kind:
+          $ref: '#/components/schemas/CatalogKind'
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        canEdit:
+          type: boolean
+    CatalogPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - total
+        - page
+        - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogRecord'
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    CatalogSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - counts
+      properties:
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+    EvaluationRecordData:
+      type: object
+      additionalProperties: false
+      required:
+        - submissionId
+        - judgeRunId
+        - problemId
+        - problemCode
+        - problemTitle
+        - studentId
+        - studentCode
+        - assignmentId
+        - contestId
+        - errorCode
+        - resultVersion
+        - status
+        - verdict
+        - score
+        - maxScore
+        - durationMs
+        - memoryPeakBytes
+        - authority
+      properties:
+        submissionId:
+          type: string
+        judgeRunId:
+          type: string
+        problemId:
+          type: string
+        problemCode:
+          type: string
+        problemTitle:
+          type: string
+        studentId:
+          type: string
+        studentCode:
+          type: string
+        assignmentId:
+          type: string
+        contestId:
+          type: string
+        errorCode:
+          type: string
+        resultVersion:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - completed
+            - rejected
+            - cancelled
+            - system_failed
+        verdict:
+          type: string
+          enum:
+            - ''
+            - accepted
+            - wrong_answer
+            - compile_error
+            - runtime_error
+            - time_limit
+            - memory_limit
+            - output_limit
+        score:
+          type: number
+          nullable: true
+          minimum: 0
+        maxScore:
+          type: number
+          nullable: true
+          minimum: 0
+        durationMs:
+          type: integer
+          nullable: true
+          minimum: 0
+        memoryPeakBytes:
+          type: integer
+          nullable: true
+          minimum: 0
+        authority:
+          type: string
+          enum:
+            - practice
+            - institution
+        sourceDigest:
+          type: string
+        testDigest:
+          type: string
+        runtimeImageId:
+          type: string
+    UsageRecordData:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - attemptId
+        - windowId
+        - sessionId
+        - studentId
+        - provider
+        - model
+        - tool
+        - currency
+        - priceVersion
+        - providerRequestId
+        - errorCode
+        - kind
+        - status
+        - source
+        - settlement
+        - inputTokens
+        - cachedInputTokens
+        - outputTokens
+        - reasoningTokens
+        - totalTokens
+        - durationMs
+        - costMicros
+      properties:
+        operationId:
+          type: string
+        attemptId:
+          type: string
+        windowId:
+          type: string
+        sessionId:
+          type: string
+        studentId:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        tool:
+          type: string
+        currency:
+          type: string
+        priceVersion:
+          type: string
+        providerRequestId:
+          type: string
+        errorCode:
+          type: string
+        kind:
+          type: string
+          enum:
+            - model
+            - mcp
+            - judge
+            - sandbox
+        status:
+          type: string
+          enum:
+            - succeeded
+            - failed
+            - cancelled
+            - unknown
+        source:
+          type: string
+          enum:
+            - provider-reported
+            - estimated
+            - unknown
+        settlement:
+          type: string
+          enum:
+            - pending
+            - estimated
+            - settled
+            - not-applicable
+        inputTokens:
+          type: integer
+          nullable: true
+          minimum: 0
+        cachedInputTokens:
+          type: integer
+          nullable: true
+          minimum: 0
+        outputTokens:
+          type: integer
+          nullable: true
+          minimum: 0
+        reasoningTokens:
+          type: integer
+          nullable: true
+          minimum: 0
+        totalTokens:
+          type: integer
+          nullable: true
+          minimum: 0
+        durationMs:
+          type: integer
+          nullable: true
+          minimum: 0
+        costMicros:
+          type: string
+          nullable: true
+          pattern: ^[0-9]{1,19}$
+          description: Integer millionths of the currency unit, serialized as a decimal string for exact browser display.
+        assignmentId:
+          type: string
+    AuditLogData:
+      type: object
+      additionalProperties: false
+      required:
+        - actorId
+        - action
+        - resourceType
+        - resourceId
+        - resourceCode
+        - requestId
+        - message
+        - category
+        - level
+        - result
+        - resourceVersion
+      properties:
+        actorId:
+          type: string
+        action:
+          type: string
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+        resourceCode:
+          type: string
+        requestId:
+          type: string
+        message:
+          type: string
+        category:
+          type: string
+          enum:
+            - operation
+            - system
+            - security
+        level:
+          type: string
+          enum:
+            - info
+            - warning
+            - error
+        result:
+          type: string
+          enum:
+            - success
+            - denied
+            - failure
+            - unknown
+        resourceVersion:
+          type: integer
+          minimum: 0
+    RuntimeRecordKind:
+      type: string
+      enum:
+        - evaluations
+        - usage-records
+        - audit-logs
+    RuntimeRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - occurredAt
+      properties:
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/RuntimeRecordKind'
+        occurredAt:
+          type: string
+          format: date-time
+        evaluation:
+          $ref: '#/components/schemas/EvaluationRecordData'
+        usage:
+          $ref: '#/components/schemas/UsageRecordData'
+        audit:
+          $ref: '#/components/schemas/AuditLogData'
+      oneOf:
+        - required:
+            - evaluation
+        - required:
+            - usage
+        - required:
+            - audit
+    RuntimeRecordPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - total
+        - page
+        - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeRecord'
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    Role:
+      type: string
+      enum:
+        - user
+        - admin
+    AuthUser:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenantId
+        - username
+        - displayName
+        - studentId
+        - email
+        - createdAt
+        - role
+        - status
+        - version
+        - canManage
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        studentId:
+          type: string
+        email:
+          type: string
+        createdAt:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          type: string
+          enum:
+            - active
+            - disabled
+        version:
+          type: integer
+        canManage:
+          type: boolean
+    Permissions:
+      type: object
+      additionalProperties: false
+      required:
+        - catalogRead
+        - recordsRead
+        - catalogWrite
+        - manageUsers
+        - environment
+      properties:
+        catalogRead:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogKind'
+        recordsRead:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeRecordKind'
+        catalogWrite:
+          type: boolean
+        manageUsers:
+          type: boolean
+        environment:
+          type: boolean
+    AuthState:
+      type: object
+      additionalProperties: false
+      required:
+        - user
+        - permissions
+      properties:
+        user:
+          allOf:
+            - $ref: '#/components/schemas/AuthUser'
+          nullable: true
+        permissions:
+          $ref: '#/components/schemas/Permissions'
+    RegisterInput:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+        - displayName
+        - password
+      properties:
+        username: &id035
+          type: string
+        displayName: &id036
+          type: string
+        email: &id037
+          type: string
+        password: &id038
+          type: string
+    LoginInput:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    CreateUserInput:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+        - displayName
+        - password
+        - role
+        - status
+      properties:
+        username: *id035
+        displayName: *id036
+        email: *id037
+        password: *id038
+        role:
+          $ref: '#/components/schemas/Role'
+        studentId:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - disabled
+    UpdateUserInput:
+      type: object
+      additionalProperties: false
+      required:
+        - displayName
+        - role
+        - status
+        - version
+      properties:
+        displayName:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          type: string
+          enum:
+            - active
+            - disabled
+        version:
+          type: integer
+          minimum: 1
+    UserPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - total
+        - page
+        - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthUser'
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    LearningFile:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - content
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+    LearningSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - assignment
+        - course
+        - problems
+      properties:
+        assignment:
+          $ref: '#/components/schemas/CatalogRecord'
+        course:
+          $ref: '#/components/schemas/CatalogRecord'
+        template:
+          $ref: '#/components/schemas/CatalogRecord'
+        problems:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogRecord'
+    LearningRelease:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - assignmentId
+        - classId
+        - digest
+        - publishedBy
+        - publishedAt
+        - revision
+        - snapshot
+        - initialFiles
+        - submissionProblemIds
+        - revoked
+        - public
+      properties:
+        id:
+          type: string
+        assignmentId:
+          type: string
+        classId:
+          type: string
+        digest:
+          type: string
+        publishedBy:
+          type: string
+        publishedAt:
+          type: string
+        revision:
+          type: integer
+        snapshot:
+          $ref: '#/components/schemas/LearningSnapshot'
+        initialFiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/LearningFile'
+        submissionProblemIds:
+          type: array
+          items:
+            type: string
+        revoked:
+          type: boolean
+        public:
+          type: boolean
+    LearningMessage:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - role
+        - content
+        - createdAt
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+        content:
+          type: string
+        jobId:
+          type: string
+        createdAt:
+          type: string
+    TrainingProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - code
+        - name
+        - difficulty
+        - language
+        - tags
+        - statement
+        - inputDescription
+        - outputDescription
+        - timeLimitMs
+        - memoryLimitMb
+        - samples
+        - initialCode
+        - source
+        - order
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        difficulty:
+          type: string
+          enum:
+            - easy
+            - medium
+            - hard
+        language:
+          type: string
+          enum:
+            - python
+            - html
+        tags:
+          type: array
+          items:
+            type: string
+        statement:
+          type: string
+        inputDescription:
+          type: string
+        outputDescription:
+          type: string
+        timeLimitMs:
+          type: integer
+        memoryLimitMb:
+          type: integer
+        samples:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sample'
+        initialCode:
+          type: string
+        source:
+          type: string
+        order:
+          type: integer
+    TrainingSection:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - document
+        - problemIds
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        document:
+          type: string
+        problemIds:
+          type: array
+          items:
+            type: string
+    TrainingProgress:
+      type: object
+      additionalProperties: false
+      required:
+        - courseId
+        - completedSectionIds
+        - lastSectionId
+        - updatedAt
+      properties:
+        courseId:
+          type: string
+        completedSectionIds:
+          type: array
+          items:
+            type: string
+        lastSectionId:
+          type: string
+        updatedAt:
+          type: string
+    TrainingCourse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - code
+        - name
+        - description
+        - sections
+        - source
+        - order
+        - updatedAt
+        - progress
+        - completedSections
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingSection'
+        source:
+          type: string
+        order:
+          type: integer
+        updatedAt:
+          type: string
+        progress:
+          $ref: '#/components/schemas/TrainingProgress'
+        completedSections:
+          type: integer
+    TrainingCourseSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - code
+        - name
+        - description
+        - source
+        - sectionCount
+        - completedSections
+        - lastSectionId
+        - updatedAt
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        source:
+          type: string
+        sectionCount:
+          type: integer
+        completedSections:
+          type: integer
+        lastSectionId:
+          type: string
+        updatedAt:
+          type: string
+    TrainingProblemList:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingProblem'
+    TrainingCourseList:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingCourseSummary'
+    TrainingProgressInput:
+      type: object
+      additionalProperties: false
+      required:
+        - sectionId
+        - completed
+      properties:
+        sectionId:
+          type: string
+        completed:
+          type: boolean
+    LearningWorkspace:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - userId
+        - studentId
+        - classId
+        - releaseId
+        - createdAt
+        - updatedAt
+        - version
+        - generation
+        - files
+        - messages
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        studentId:
+          type: string
+        classId:
+          type: string
+        releaseId:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        version:
+          type: integer
+        generation:
+          type: integer
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/LearningFile'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/LearningMessage'
+    LearningJob:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspaceId
+        - studentId
+        - userId
+        - classId
+        - releaseId
+        - kind
+        - status
+        - provider
+        - model
+        - priceVersion
+        - maximumMicros
+        - output
+        - createdAt
+        - updatedAt
+        - generation
+        - workspaceVersion
+        - attempts
+        - dispatched
+        - cancelRequested
+      properties:
+        connectionId:
+          type: string
+        connectionGeneration:
+          type: integer
+        id:
+          type: string
+        workspaceId:
+          type: string
+        studentId:
+          type: string
+        userId:
+          type: string
+        classId:
+          type: string
+        releaseId:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+        problemId:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        priceVersion:
+          type: string
+        maximumMicros:
+          type: string
+        output:
+          type: string
+        error:
+          type: string
+        providerRequestId:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        leaseUntil:
+          type: string
+        generation:
+          type: integer
+        workspaceVersion:
+          type: integer
+        attempts:
+          type: integer
+        dispatched:
+          type: boolean
+        cancelRequested:
+          type: boolean
+        submissionId:
+          type: string
+        assignmentId:
+          type: string
+        sourceDigest:
+          type: string
+        runtimeImageId:
+          type: string
+        resultVersion:
+          type: integer
+        evaluation:
+          $ref: '#/components/schemas/EvaluationRecordData'
+    LearningEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspaceId
+        - jobId
+        - type
+        - text
+        - createdAt
+        - attempt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        jobId:
+          type: string
+        type:
+          type: string
+        text:
+          type: string
+        createdAt:
+          type: string
+        attempt:
+          type: integer
+    LearningAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - scope
+        - targetId
+        - currency
+        - limitMicros
+        - heldMicros
+        - spentMicros
+        - version
+      properties:
+        id:
+          type: string
+        scope:
+          type: string
+        targetId:
+          type: string
+        currency:
+          type: string
+        limitMicros:
+          type: string
+        heldMicros:
+          type: string
+        spentMicros:
+          type: string
+        version:
+          type: integer
+    LearningPrice:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - provider
+        - model
+        - currency
+        - inputMicros
+        - cachedReadMicros
+        - cacheWriteMicros
+        - outputMicros
+        - maximumMicros
+      properties:
+        id:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        currency:
+          type: string
+        inputMicros:
+          type: string
+        cachedReadMicros:
+          type: string
+        cacheWriteMicros:
+          type: string
+        outputMicros:
+          type: string
+        maximumMicros:
+          type: string
+    LearningLedger:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - jobId
+        - accountId
+        - type
+        - amountMicros
+        - currency
+        - priceVersion
+        - createdAt
+      properties:
+        id:
+          type: string
+        jobId:
+          type: string
+        accountId:
+          type: string
+        type:
+          type: string
+        amountMicros:
+          type: string
+        currency:
+          type: string
+        priceVersion:
+          type: string
+        createdAt:
+          type: string
+    LearningCapabilities:
+      type: object
+      additionalProperties: false
+      required:
+        - agent
+        - publicTest
+        - submission
+        - reason
+      properties:
+        agent:
+          type: boolean
+        publicTest:
+          type: boolean
+        submission:
+          type: boolean
+        reason:
+          type: string
+    LearningPublishInput:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+      properties:
+        version:
+          type: integer
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/LearningFile'
+        judges:
+          type: object
+          additionalProperties:
+            type: string
+    LearningSaveInput:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - generation
+        - files
+      properties:
+        version:
+          type: integer
+        generation:
+          type: integer
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/LearningFile'
+    LearningJobInput:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - version
+      properties:
+        connectionId:
+          type: string
+        kind:
+          type: string
+        prompt:
+          type: string
+        problemId:
+          type: string
+        priceVersion:
+          type: string
+        version:
+          type: integer
+    LearningBudgetInput:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+        - currency
+        - limitMicros
+        - version
+      properties:
+        scope:
+          type: string
+        targetId:
+          type: string
+        currency:
+          type: string
+        limitMicros:
+          type: string
+        version:
+          type: integer
+    LearningJudgeBundle:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - problemId
+        - digest
+        - matcher
+        - createdAt
+        - count
+      properties:
+        id:
+          type: string
+        problemId:
+          type: string
+        digest:
+          type: string
+        matcher:
+          type: string
+        createdAt:
+          type: string
+        count:
+          type: integer
+    LearningJudgeCase:
+      type: object
+      additionalProperties: false
+      required:
+        - input
+        - expected
+      properties:
+        input:
+          type: string
+        expected:
+          type: string
+    LearningJudgeBundleInput:
+      type: object
+      additionalProperties: false
+      required:
+        - problemId
+        - matcher
+        - cases
+      properties:
+        problemId:
+          type: string
+        matcher:
+          type: string
+        cases:
+          type: array
+          items:
+            $ref: '#/components/schemas/LearningJudgeCase'
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: agentlab_session
+      description: HttpOnly opaque session; browser receives no bearer token.
+security:
+  - SessionCookie: []

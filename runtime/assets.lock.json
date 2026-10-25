@@ -1,0 +1,33 @@
+{
+  "assets": [
+    {
+      "name": "cc-switch-windows-portable",
+      "version": "4.0.18",
+      "platform": "windows",
+      "url": "https://github.com/farion1231/cc-switch/releases/download/v4.0.18/CC-Switch-v4.0.18-Windows-Portable.zip",
+      "path": ".cache/runtime-research/cc-switch-4.0.18-Windows-Portable.zip",
+      "sha256": "628342e32cb4424bdd1f6590d9789794236b5e4522850036ea6e8a4e49ee4699"
+    },
+    {
+      "name": "cc-switch-linux-amd64",
+      "version": "4.0.18",
+      "url": "https://github.com/farion1231/cc-switch/releases/download/v4.0.18/CC-Switch-v4.0.18-Linux-x86_64.deb",
+      "path": "runtime/cc-switch/vendor/cc-switch.deb",
+      "sha256": "7ef345e0a106a818cccd3ab730fde8feeb54642439a96877c2d0698cb7bf4768"
+    },
+    {
+      "name": "alpine-vm-kernel",
+      "version": "3.22-netboot-snapshot-20261023",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/x86_64/netboot/vmlinuz-virt",
+      "path": "runtime/vm/vendor/vmlinuz-virt",
+      "sha256": "26f146f664ad057be3b39b211422b03b1f94cb2c3d66522fd4841811a224bfd5"
+    },
+    {
+      "name": "hydro-ybtbas",
+      "version": "snapshot-20261023",
+      "url": "https://hydro.ac/ybtbas.zip",
+      "path": "runtime/problem-banks/downloads/ybtbas.zip",
+      "sha256": "f847ba188e64fdd279ba4e1abd4ed6c09064bdbae59f71e164c619d96be48ce7"
+    }
+  ]
+}

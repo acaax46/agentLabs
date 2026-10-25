@@ -1,0 +1,101 @@
+/* AgentLab / Black Geek Console v3.0
+ * Canonical runtime values for DESIGN.md. Import before component styles.
+ * Values mirror assets/design-tokens.target.json; semantics stay under --al-*.
+ */
+:root {
+  color-scheme: dark;
+
+  --al-color-canvas: #080b10;
+  --al-color-surface: #10151e;
+  --al-color-surface-subtle: #0c1119;
+  --al-color-surface-raised: #18202d;
+  --al-color-border: #263244;
+  --al-color-input-border: #627594;
+  --al-color-text: #e6edf7;
+  --al-color-text-muted: #9caec5;
+  --al-color-primary: #38d9ff;
+  --al-color-primary-hover: #72e5ff;
+  --al-color-primary-active: #20b8de;
+  --al-color-primary-subtle: #102e3a;
+  --al-color-on-primary: #061018;
+  --al-color-accent: #a78bfa;
+  --al-color-accent-subtle: #241c3a;
+  --al-color-success: #4ade80;
+  --al-color-warning: #fbbf24;
+  --al-color-danger: #f87171;
+  --al-color-info: #60a5fa;
+  --al-color-disabled-text: #8795a9;
+  --al-color-workspace-bg: #05080d;
+  --al-color-workspace-text: #d8e3f0;
+  --al-color-focus: #38d9ff;
+
+  --al-color-success-subtle: #0e2618;
+  --al-color-warning-subtle: #2a2110;
+  --al-color-danger-subtle: #2a1517;
+  --al-color-info-subtle: #111f31;
+  --al-color-accent-line: rgb(167 139 250 / 38%);
+  --al-color-primary-line: rgb(56 217 255 / 38%);
+  --al-color-border-soft: rgb(38 50 68 / 58%);
+  --al-color-overlay: rgb(4 7 11 / 76%);
+  --al-color-grid-line: rgb(56 217 255 / 6%);
+
+  --al-font-sans: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --al-font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+
+  --al-text-xs: 12px;
+  --al-text-sm: 14px;
+  --al-text-ui: 15px;
+  --al-text-base: 16px;
+  --al-text-lg: 18px;
+  --al-text-xl: 20px;
+  --al-text-2xl: 28px;
+  --al-text-3xl: 32px;
+  --al-leading-ui: 1.6;
+  --al-leading-heading: 1.25;
+
+  --al-space-1: 4px;
+  --al-space-2: 8px;
+  --al-space-3: 12px;
+  --al-space-4: 16px;
+  --al-space-5: 20px;
+  --al-space-6: 24px;
+  --al-space-8: 32px;
+  --al-space-10: 40px;
+  --al-space-12: 48px;
+  --al-space-16: 64px;
+
+  --al-radius-sm: 4px;
+  --al-radius-control: 6px;
+  --al-radius-card: 10px;
+  --al-radius-panel: 12px;
+
+  --al-control-height: 40px;
+  --al-control-height-sm: 32px;
+  --al-control-height-touch: 44px;
+  --al-sidebar-width: 240px;
+  --al-topbar-height: 56px;
+  --al-content-width: 1440px;
+  --al-reading-width: 760px;
+
+  --al-border-width: 1px;
+  --al-shadow-dialog: 0 16px 48px rgb(0 0 0 / 45%);
+  --al-shadow-focus: 0 0 0 3px rgb(56 217 255 / 18%);
+  --al-shadow-raised: 0 12px 32px rgb(0 0 0 / 30%);
+
+  --al-duration-fast: 120ms;
+  --al-duration-normal: 180ms;
+  --al-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --al-z-base: 0;
+  --al-z-sticky: 10;
+  --al-z-popover: 20;
+  --al-z-dialog: 40;
+  --al-z-toast: 50;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --al-duration-fast: 0ms;
+    --al-duration-normal: 0ms;
+  }
+}

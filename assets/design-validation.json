@@ -1,0 +1,295 @@
+{
+  "status": "local-p0-runtime-and-acceptance-verified",
+  "designVersion": "3.1.0",
+  "direction": "black-geek-console",
+  "scope": "Workbench P0 implementation and local real-model/Docker acceptance; historical checks retained.",
+  "checkedOn": "2026-10-24",
+  "designSpec": "../DESIGN.md",
+  "targetTokens": "design-tokens.target.json",
+  "productThemeMigrated": true,
+  "databaseMigrated": false,
+  "cliSessionsLaunched": false,
+  "productTestsRun": true,
+  "browserValidationRun": true,
+  "contrastChecks": [
+    {
+      "name": "body",
+      "foreground": "#E6EDF7",
+      "background": "#080B10",
+      "ratio": 16.72,
+      "minimum": 4.5
+    },
+    {
+      "name": "muted",
+      "foreground": "#9CAEC5",
+      "background": "#10151E",
+      "ratio": 8.08,
+      "minimum": 4.5
+    },
+    {
+      "name": "primaryText",
+      "foreground": "#38D9FF",
+      "background": "#10151E",
+      "ratio": 10.92,
+      "minimum": 4.5
+    },
+    {
+      "name": "primaryButton",
+      "foreground": "#061018",
+      "background": "#38D9FF",
+      "ratio": 11.45,
+      "minimum": 4.5
+    },
+    {
+      "name": "primaryButtonHover",
+      "foreground": "#061018",
+      "background": "#72E5FF",
+      "ratio": 13.12,
+      "minimum": 4.5
+    },
+    {
+      "name": "primaryButtonActive",
+      "foreground": "#061018",
+      "background": "#20B8DE",
+      "ratio": 8.19,
+      "minimum": 4.5
+    },
+    {
+      "name": "accent",
+      "foreground": "#A78BFA",
+      "background": "#10151E",
+      "ratio": 6.72,
+      "minimum": 4.5
+    },
+    {
+      "name": "success",
+      "foreground": "#4ADE80",
+      "background": "#10151E",
+      "ratio": 10.5,
+      "minimum": 4.5
+    },
+    {
+      "name": "warning",
+      "foreground": "#FBBF24",
+      "background": "#10151E",
+      "ratio": 10.96,
+      "minimum": 4.5
+    },
+    {
+      "name": "danger",
+      "foreground": "#F87171",
+      "background": "#10151E",
+      "ratio": 6.61,
+      "minimum": 4.5
+    },
+    {
+      "name": "info",
+      "foreground": "#60A5FA",
+      "background": "#10151E",
+      "ratio": 7.19,
+      "minimum": 4.5
+    },
+    {
+      "name": "disabledReason",
+      "foreground": "#8795A9",
+      "background": "#10151E",
+      "ratio": 6.01,
+      "minimum": 4.5
+    },
+    {
+      "name": "workspace",
+      "foreground": "#D8E3F0",
+      "background": "#05080D",
+      "ratio": 15.44,
+      "minimum": 4.5
+    },
+    {
+      "name": "inputBorder",
+      "foreground": "#627594",
+      "background": "#10151E",
+      "ratio": 3.91,
+      "minimum": 3
+    },
+    {
+      "name": "focus",
+      "foreground": "#38D9FF",
+      "background": "#10151E",
+      "ratio": 10.92,
+      "minimum": 3
+    },
+    {
+      "name": "mutedRaised",
+      "foreground": "#9CAEC5",
+      "background": "#18202D",
+      "ratio": 7.23,
+      "minimum": 4.5
+    },
+    {
+      "name": "disabledReasonRaised",
+      "foreground": "#8795A9",
+      "background": "#18202D",
+      "ratio": 5.38,
+      "minimum": 4.5
+    },
+    {
+      "name": "inputBorderRaised",
+      "foreground": "#627594",
+      "background": "#18202D",
+      "ratio": 3.5,
+      "minimum": 3
+    },
+    {
+      "name": "focusRaised",
+      "foreground": "#38D9FF",
+      "background": "#18202D",
+      "ratio": 9.77,
+      "minimum": 3
+    }
+  ],
+  "note": "Local container acceptance only. No commercial payment, provider final bill, managed cloud isolation or SLA claim.",
+  "markdownDocumentsChecked": 14,
+  "localLinksChecked": 66,
+  "implementationFilesChecked": 210,
+  "failures": [],
+  "applicationSourceChangedByThisTask": true,
+  "concurrentImplementationChangesDetected": [
+    "frontend/src\\tailwind.css",
+    "frontend/src\\design-tokens.css",
+    "frontend/src\\auth\\pages.tsx",
+    "frontend/src\\auth\\context.tsx",
+    "frontend/src\\layout\\Shell.tsx"
+  ],
+  "runtimeColorSchemeObserved": "dark",
+  "runtimeThemeMigrationVerified": true,
+  "p0ContrastChecks": [
+    {
+      "name": "body",
+      "foreground": "#E6EDF7",
+      "background": "#080B10",
+      "ratio": 16.72,
+      "minimum": 4.5
+    },
+    {
+      "name": "muted",
+      "foreground": "#9CAEC5",
+      "background": "#10151E",
+      "ratio": 8.08,
+      "minimum": 4.5
+    },
+    {
+      "name": "primary-button",
+      "foreground": "#061018",
+      "background": "#38D9FF",
+      "ratio": 11.45,
+      "minimum": 4.5
+    },
+    {
+      "name": "primary-hover",
+      "foreground": "#061018",
+      "background": "#72E5FF",
+      "ratio": 13.12,
+      "minimum": 4.5
+    },
+    {
+      "name": "primary-active",
+      "foreground": "#061018",
+      "background": "#20B8DE",
+      "ratio": 8.19,
+      "minimum": 4.5
+    },
+    {
+      "name": "success-badge",
+      "foreground": "#4ADE80",
+      "background": "#0E2618",
+      "ratio": 9.21,
+      "minimum": 4.5
+    },
+    {
+      "name": "warning-badge",
+      "foreground": "#FBBF24",
+      "background": "#2A2110",
+      "ratio": 9.51,
+      "minimum": 4.5
+    },
+    {
+      "name": "danger-badge",
+      "foreground": "#F87171",
+      "background": "#2A1517",
+      "ratio": 6.23,
+      "minimum": 4.5
+    },
+    {
+      "name": "info-badge",
+      "foreground": "#60A5FA",
+      "background": "#111F31",
+      "ratio": 6.53,
+      "minimum": 4.5
+    },
+    {
+      "name": "code-and-preview",
+      "foreground": "#D8E3F0",
+      "background": "#05080D",
+      "ratio": 15.44,
+      "minimum": 4.5
+    },
+    {
+      "name": "input-border",
+      "foreground": "#627594",
+      "background": "#10151E",
+      "ratio": 3.91,
+      "minimum": 3
+    },
+    {
+      "name": "raised-input-border",
+      "foreground": "#627594",
+      "background": "#18202D",
+      "ratio": 3.5,
+      "minimum": 3
+    },
+    {
+      "name": "focus",
+      "foreground": "#38D9FF",
+      "background": "#10151E",
+      "ratio": 10.92,
+      "minimum": 3
+    },
+    {
+      "name": "focus-raised",
+      "foreground": "#38D9FF",
+      "background": "#18202D",
+      "ratio": 9.77,
+      "minimum": 3
+    },
+    {
+      "name": "accent",
+      "foreground": "#A78BFA",
+      "background": "#241C3A",
+      "ratio": 5.93,
+      "minimum": 4.5
+    },
+    {
+      "name": "neutral-badge",
+      "foreground": "#9CAEC5",
+      "background": "#18202D",
+      "ratio": 7.23,
+      "minimum": 4.5
+    }
+  ],
+  "p0TokenComparison": {
+    "count": 77,
+    "mismatches": []
+  },
+  "p0Acceptance": {
+    "checkedOn": "2026-10-24",
+    "viewportWidths": [1440, 1024, 390],
+    "zoom": "200% equivalent CSS viewport with device scale 2",
+    "realBackend": true,
+    "realModels": ["platform", "byok"],
+    "isolation": "docker/container",
+    "externalApi": true,
+    "ownershipRevocationCancellation": true,
+    "contrastPairs": 16,
+    "tokenCount": 77,
+    "evidence": "p0-acceptance.json"
+  }
+}

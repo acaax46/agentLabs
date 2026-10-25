@@ -1,0 +1,40 @@
+name: agentlab-runtime
+services:
+  opensandbox:
+    image: ${OPENSANDBOX_SERVER_IMAGE:?Run prepare.py first}
+    environment:
+      SANDBOX_CONFIG_PATH: /etc/opensandbox/config.toml
+      OPENSANDBOX_SERVER_API_KEY: ${OPENSANDBOX_SERVER_API_KEY:?Run prepare.py first}
+    ports:
+      - '127.0.0.1:18080:8080'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../.cache/runtime/config.toml:/etc/opensandbox/config.toml:ro
+      - opensandbox-state:/root/.opensandbox
+    labels:
+      io.agentlab.purpose: development-runtime
+    restart: 'no'
+  cc-switch:
+    profiles: [management]
+    image: agentlab/cc-switch:4.0.18
+    build:
+      context: ./cc-switch
+    ports:
+      - '127.0.0.1:16080:6080'
+    volumes:
+      - cc-switch-home:/home/node
+    shm_size: 256mb
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    labels:
+      io.agentlab.purpose: configuration-management
+    restart: 'no'
+volumes:
+  opensandbox-state:
+  cc-switch-home:

@@ -1,0 +1,27 @@
+name: agentlab-data
+services:
+  mongo:
+    # Cached official MongoDB 7.0 image, pinned for identical local and CI behavior.
+    image: public.ecr.aws/docker/library/mongo@sha256:9650758f83af117fc96699f030a44f9300bed839734e67012f56df05b2fd6290
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    ports:
+      - '127.0.0.1:${AGENTLAB_MONGO_PORT:-27018}:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # Idempotently initialize the local single-member test replica set.
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - 'try { rs.status() } catch (e) { rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]}) }; quit(db.hello().isWritablePrimary ? 0 : 1)'
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    labels:
+      io.agentlab.purpose: local-authoring-and-tests
+    restart: 'no'
+volumes:
+  mongo-data:

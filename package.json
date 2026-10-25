@@ -1,0 +1,37 @@
+{
+  "name": "agentlab",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22.20.0 <23",
+    "pnpm": "9.15.9"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @agentlab/frontend dev",
+    "dev:api": "node scripts/dev-api.mjs",
+    "seed:demo": "go -C backend run ./cmd/seed-demo",
+    "seed:platform": "go -C backend run ./cmd/seed-platform",
+    "build:sandbox": "docker build -t agentlab/sandbox-python:20261024 runtime/sandbox",
+    "build:guest": "node scripts/build-guest.mjs",
+    "test:e2e:live": "pnpm --filter @agentlab/frontend exec playwright test --config playwright.live.config.ts",
+    "db:up": "docker compose -f compose.test.yaml up -d --wait --wait-timeout 120",
+    "db:down": "docker compose -f compose.test.yaml down",
+    "test:integration": "node scripts/test-integration.mjs",
+    "test:sandbox": "node scripts/test-sandbox.mjs",
+    "smoke:platform": "node scripts/smoke-platform.mjs",
+    "accept:real-models": "node scripts/accept-real-models.mjs",
+    "check:platform-contract": "node scripts/check-platform-contract.mjs",
+    "contracts": "pnpm --filter @agentlab/frontend contracts",
+    "lint": "pnpm --filter @agentlab/frontend lint",
+    "format": "prettier --write frontend scripts contracts/openapi.yaml contracts/platform.openapi.yaml package.json .prettierrc.json pnpm-workspace.yaml .github/workflows",
+    "format:check": "prettier --check frontend scripts contracts/openapi.yaml contracts/platform.openapi.yaml package.json .prettierrc.json pnpm-workspace.yaml .github/workflows",
+    "check": "pnpm format:check && pnpm --filter @agentlab/frontend lint && pnpm --filter @agentlab/frontend check && go -C backend vet ./... && go -C backend test ./...",
+    "build": "pnpm --filter @agentlab/frontend build && node scripts/build.mjs api",
+    "build:desktop": "pnpm --filter @agentlab/frontend build && node scripts/build.mjs desktop",
+    "test:e2e": "pnpm --filter @agentlab/frontend test:e2e"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  }
+}
