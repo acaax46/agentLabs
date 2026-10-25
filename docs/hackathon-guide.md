@@ -1,6 +1,6 @@
 # AgentLab 黑客松协作与演示说明
 
-本文给参赛队友和评委讲解：本仓库现在能演示什么、不能宣称什么、最短启动路径，以及文档该怎么补。产品目标仍以 [平台总设计](agentlab-platform-design.md) 为准；已实现边界以 [实施现状](implementation-status.md) 为准。开发命令以 [README.md](../README.md) 为准。
+本文给参赛队友和评委讲解：本仓库现在能演示什么、不能宣称什么、最短启动路径，以及文档该怎么补。产品目标仍以 [平台总设计](agentlab-platform-design.md) 为准；已实现边界以 [实施现状](implementation-status.md) 为准。开发命令以[本地开发指南](development.md)为准。
 
 ## 一句话
 
@@ -52,7 +52,7 @@ pnpm seed:platform
 pnpm dev
 ```
 
-浏览器打开 http://127.0.0.1:5173 ，API 在 http://127.0.0.1:8787 。演示账号见 README。没有 Docker 或沙箱镜像时，工作台应显示代码执行不可用，不要用 mock 假装成功。
+浏览器打开 http://127.0.0.1:5173 ，API 在 http://127.0.0.1:8787 。演示账号见[本地开发指南](development.md#本地演示账号)。没有 Docker 或沙箱镜像时，工作台应显示代码执行不可用，不要用 mock 假装成功。
 
 ## 队友可以补什么
 

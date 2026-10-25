@@ -14,7 +14,7 @@ P1 增加独立工具调用调试与历史、发布快照对比、多语言调�
 
 用户对话入口是 `/chat`：先选沙箱，再使用附件输入框、多轮消息、SSE 公开回复和默认折叠的执行进度。`conversationEvents.ts` 依据服务端游标恢复流，页面只读后端 `Conversation` 与每轮 `Run`，不保存本地业务副本。点击产物在桌面右侧或手机覆盖面板预览；HTML 禁止脚本、远程资源和父页面权限。普通用户登录后默认进入对话，管理员仍进入概览，单次 Run 表单保留作 API 调试。
 
-现有栈为 React + TypeScript + Vite，Tailwind 4 只映射统一主题。从项目根目录启动数据库、API 与 `pnpm dev`；本目录可执行 `pnpm dev`、`pnpm lint`、`pnpm check`、`pnpm build`。Node/pnpm 与集成测试命令见 [根 README](../README.md)。
+现有栈为 React + TypeScript + Vite，Tailwind 4 只映射统一主题。从项目根目录启动数据库、API 与 `pnpm dev`；本目录可执行 `pnpm dev`、`pnpm lint`、`pnpm check`、`pnpm build`。Node/pnpm 与集成测试命令见[本地开发指南](../docs/development.md)。
 
 Vite 代理 `/api`、`/v1` 和 `/health` 到 `AGENTLAB_API_PORT`（默认 8787）。机器调用示例使用 `/v1` 和项目 API Key，工作台本身使用会话接口。登录、账户连接、密码修改保留原有传输方式。Wails 当前没有平台原生绑定，相关页面明确提示改用浏览器，不回退到本地业务数据。
 

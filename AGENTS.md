@@ -5,7 +5,7 @@
 ## 产品与文档
 
 - AgentLab 的目标是面向开发者与团队的托管 Agent 执行和 Tools API 平台。工作台用于配置、调试、发布、运行观测与费用管理；用户可选择平台模型、自己的供应商账户或自建模型服务。
-- 唯一平台总设计：[docs/agentlab-platform-design.md](docs/agentlab-platform-design.md)。代码事实与迁移边界：[docs/implementation-status.md](docs/implementation-status.md)。实际开发命令：[README.md](README.md)。演示口径、预设目录与代码位置：[docs/hackathon-guide.md](docs/hackathon-guide.md)、[docs/preset-agents.md](docs/preset-agents.md)、[docs/code-map.md](docs/code-map.md)。涉及任务前读取相关部分。
+- 唯一平台总设计：[docs/agentlab-platform-design.md](docs/agentlab-platform-design.md)。代码事实与迁移边界：[docs/implementation-status.md](docs/implementation-status.md)。实际开发命令：[docs/development.md](docs/development.md)。演示口径、预设目录与代码位置：[docs/hackathon-guide.md](docs/hackathon-guide.md)、[docs/preset-agents.md](docs/preset-agents.md)、[docs/code-map.md](docs/code-map.md)。涉及任务前读取相关部分。
 - 新主业务为租户/空间、项目、Agent 与 Tool 的版本、Run、连接、API Key、产物、用量和账本。旧教育、课堂、班级、题库与判题不再作为默认产品定位。
 - 黑色工作台主业务已接入真实 /api/v1/platform；/v1 为同一业务的机器接口。P0 主链路已用真实模型、MongoDB 与 Docker 容器验证；这不代表云端多租户、商业支付、对象存储或 SLA 已实现。没有计量证据的存储项保持未知，不得伪造已结算金额。
 - 不因重写文档删除现有业务代码、数据库、用户材料、账户、图片或测试证据；不机械地把班级改名为项目、学生改名为 API 调用身份。

@@ -5,7 +5,7 @@
 ## 开工前
 
 1. 从仓库根目录启动工具，不要把子目录当成另一个产品。
-2. 先读 [README.md](README.md) 的启动方式，以及 [docs/code-map.md](docs/code-map.md) 的代码位置。
+2. 先读 [本地开发指南](docs/development.md) 的启动方式，以及 [docs/code-map.md](docs/code-map.md) 的代码位置。
 3. 涉及页面或文案时读 [DESIGN.md](DESIGN.md)。不要复活奶油/Soft Clay 风格，也不要用 CSS 滤镜给旧 PNG 改色。
 4. 新业务走 MongoDB，不要新增 SQLite 持久化。
 
@@ -26,4 +26,4 @@
 | 平台后端 | 相关 Go 测试；动到事务/并发时用 MongoDB，不要用进程内状态顶替 |
 | 真实执行 | Docker 沙箱与真实模型；缺沙箱就应拒绝执行 |
 
-本地验证命令见 README，不要把一次本机通过写成云端验收。
+本地验证命令见[本地开发指南](docs/development.md#检查与构建)，不要把一次本机通过写成云端验收。

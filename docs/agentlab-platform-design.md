@@ -2,7 +2,7 @@
 
 版本 3.0 · 2026-10-24 · 状态：产品与工程目标已确定，待分阶段实施。
 
-本文件是产品定位、业务规则、接口草案、架构与实施路线的唯一总设计。它替代旧编程教育商业闭环、桌面沙箱架构及分散的课堂设计。视觉规则见 [DESIGN.md](../DESIGN.md)，现有代码事实见 [implementation-status.md](implementation-status.md)，开发入口见 [README.md](../README.md)。
+本文件是产品定位、业务规则、接口草案、架构与实施路线的唯一总设计。它替代旧编程教育商业闭环、桌面沙箱架构及分散的课堂设计。视觉规则见 [DESIGN.md](../DESIGN.md)，现有代码事实见 [implementation-status.md](implementation-status.md)，开发入口见[本地开发指南](development.md)。
 
 本文件定义目标，不因文档发布自动视为实现。当前本机平台 API、黑色工作台、真实模型/Docker 主链路已有代码和证据；完整 MVP 仍有收尾项，云端托管与商业支付按后续阶段验收，具体见实施现状。
 
@@ -359,7 +359,7 @@ P0 状态（2026-10-25）：本机纵向链路已有真实 DeepSeek、MongoDB、
 
 优先复用身份、连接保管、持久队列、幂等、预算、版本冻结、只追加记录与隔离执行；重新设计其租户/项目归属和对外身份。教育判题可作为内部结果校验的参考实现，不继续作为主业务扩展。
 
-文档入口维持精简：本文件描述目标；implementation-status.md 描述代码事实；根目录 DESIGN.md 描述视觉；README 与各目录 README 提供实际开发说明；AGENTS.md 与 frontend/AGENTS.md 约束后续开发。出现冲突先校准事实与目标，不复制出新的平行设计。
+文档入口维持精简：本文件描述目标；implementation-status.md 描述代码事实；根目录 DESIGN.md 描述视觉；根目录 README 提供项目简介、路线图、演示视频与文档目录；[本地开发指南](development.md)与各目录 README 提供实际开发说明；AGENTS.md 与 frontend/AGENTS.md 约束后续开发。出现冲突先校准事实与目标，不复制出新的平行设计。
 
 ## 13. 参考与待验证事项
 

@@ -8,7 +8,7 @@
 | --- | --- |
 | 产品要做成什么样 | [docs/agentlab-platform-design.md](agentlab-platform-design.md) |
 | 现在实际做成了哪一步 | [docs/implementation-status.md](implementation-status.md) |
-| 怎么启动、怎么演示 | [README.md](../README.md)、[docs/local-start-and-mvp-video.md](local-start-and-mvp-video.md)、[docs/hackathon-guide.md](hackathon-guide.md) |
+| 怎么启动、怎么演示 | [本地开发指南](development.md)、[最小视频指南](local-start-and-mvp-video.md)、[演示与协作](hackathon-guide.md) |
 | 预设 Agent 有哪些 | [docs/preset-agents.md](preset-agents.md) |
 | `/v1` 请求长什么样 | [contracts/platform.openapi.yaml](../contracts/platform.openapi.yaml) |
 | 旧学习接口还在哪 | [contracts/openapi.yaml](../contracts/openapi.yaml) |

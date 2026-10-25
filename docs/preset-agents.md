@@ -2,7 +2,7 @@
 
 当前服务端在初始化时幂等发布 9 个平台预设 Agent 和 3 个工具版本。定义在 `backend/internal/platform/catalog_*.go`；已发布版本的提示词、工具和限额变更必须升版本，不能改写旧版本。用户自定义 Agent 的草稿/发布链路仍未开放。
 
-演示默认走「文件分析 Agent」。GPU 与代码 Agent 需要额外镜像和本机条件，见 [实施现状](implementation-status.md) 与 [README.md](../README.md)。
+演示默认走「文件分析 Agent」。GPU 与代码 Agent 需要额外镜像和本机条件，见[实施现状](implementation-status.md)与[本地开发指南](development.md#gpu-与代码-agent-引擎可选)。
 
 ## 预设 Agent
 

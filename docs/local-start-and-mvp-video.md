@@ -1,10 +1,10 @@
 # AgentLab 本地启动与 MVP 最小使用视频
 
-本文说明如何在 Windows 本机启动 AgentLab，并录制一段可复核 MVP 主链路的最小使用视频。命令均从仓库根目录执行；其他系统把 PowerShell 写法替换为对应 shell 即可。评委讲解口径见 [黑客松演示与协作](hackathon-guide.md)。
+本文说明如何在 Windows 本机启动 AgentLab，并录制一段可复核 MVP 主链路的最小使用视频。命令均从仓库根目录执行；其他系统把 PowerShell 写法替换为对应 shell 即可。完整启动、配置与验证命令见[本地开发指南](development.md)，评委讲解口径见[黑客松演示与协作](hackathon-guide.md)。
 
 按当前“对话”入口录屏时，使用[演示操作与口播脚本](demo-script.md)中的逐屏操作和台词；本文继续提供环境启动步骤，以及 Agent Playground / API 调试路径的补充说明。仓库已提供可直接选用的 [demo/orders.csv](../demo/orders.csv)。
 
-本文按当前代码事实（2026-10-25）编写：浏览器工作台使用 MongoDB、真实模型连接和 Docker 沙箱完成文件分析 Run；服务端同时提供 9 个预设 Agent，包括通用代码生成、工作台搭建师、GPU 计算和代码 Agent。云端多租户、对象存储、KMS、支付和 SLA 不在本地 MVP 验收范围。边界以 README.md、docs/implementation-status.md 和 DESIGN.md 为准。预设清单见 [预设 Agent 与工具目录](preset-agents.md)。
+本文按当前代码事实（2026-10-25）编写：浏览器工作台使用 MongoDB、真实模型连接和 Docker 沙箱完成文件分析 Run；服务端同时提供 9 个预设 Agent，包括通用代码生成、工作台搭建师、GPU 计算和代码 Agent。云端多租户、对象存储、KMS、支付和 SLA 不在本地 MVP 验收范围。边界以[实施现状](implementation-status.md)和[视觉与交互规范](../DESIGN.md)为准。预设清单见[预设 Agent 与工具目录](preset-agents.md)。
 
 ## 1. 录制目标与边界
 
@@ -27,7 +27,7 @@
 | 操作系统 | Windows 10/11，PowerShell；Docker Desktop 已启动                         |
 | Node.js  | 22.20.x，版本见 .node-version                                            |
 | pnpm     | 9.15.9                                                                   |
-| Go       | 以 backend/go.mod 为准（README 当前记录为 Go 1.26.x）                    |
+| Go       | 以 [backend/go.mod](../backend/go.mod) 为准，当前要求 Go 1.26.0 或以上兼容版本 |
 | Docker   | 能运行 MongoDB 和 agentlab/sandbox-python:20261024                       |
 | 模型     | 可访问 OpenAI Chat Completions 兼容接口的账户；真实 Run 会消耗供应商额度 |
 | 浏览器   | Chrome/Chromium，建议录制窗口 1440×900                                   |

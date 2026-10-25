@@ -110,7 +110,7 @@
 1. **项目预算被误称为月度预算。** `frontend/src/platform/pages/ProjectsPage.tsx` 两处使用“月度预算”，但 `backend/internal/platform/projects.go` 的项目预算账户使用空 `period` 和累计 `spent`，没有按月重置。只有 API Key 限额按月份建立账户。应采用累计项目预算并修正文案，或实现真正的周期预算；当前不能承诺下月自动恢复项目额度。
 2. **待核对结算会改写原始用量。** 已由追加核对记录与查询投影关闭，原始用量保持不可变。
 3. **存储尚未计量。** 已由后端日采样披露关闭；当前只披露、不计费，尚无存储额度、超额规则或价目。
-4. **远程 CI 未配置。** 项目按本地开发机验收，MongoDB、Docker、浏览器和真实模型依赖不上传 GitHub；对应本地命令和结果保留在 README 与 `.cache` 记录中。
+4. **远程 CI 未配置。** 项目按本地开发机验收，MongoDB、Docker、浏览器和真实模型依赖不上传 GitHub；对应本地命令见[本地开发指南](development.md#检查与构建)，结果保留在 `.cache` 记录中。
 5. **版本和计费说明有缺口。** 已发布工具的计量描述仍称“沙箱算力已包含在托管执行中”，新价目可按 `sandboxBilling=separate` 另列，须遵守不可变发布规则修订版本或补充当前策略展示。Agent 的 `Sandbox` 为 profile 名，未固定实际镜像 digest；总设计要求的镜像可复现性还未完整实现。
 6. **验收剩余边界。** 真实模型质量、并发容量、云端多租户、支付与 SLA 仍不在本机 MVP 证据范围；前端 P0 回归使用受控接口，真实后端主链路由 live acceptance 和公开 API Smoke 覆盖。
 
@@ -132,7 +132,7 @@ P1 已提前完成工具目录/契约展示、独立异步 Tools API 后端、�
 
 ## 托管 Agent / Tools API 后端（本机 MVP）
 
-范围：`backend/internal/platform`（服务）及子包 `api`（HTTP）、`money`、`ids`、`blob`、`gateway`、`sandbox`、`table`；`backend/cmd/server`（进程角色与公开监听）、`backend/cmd/seed-platform`（开发价格表）；`runtime/sandbox`（沙箱镜像与协议）；[contracts/platform.openapi.yaml](../contracts/platform.openapi.yaml)（49 个操作）。运行方式见 [README](../README.md)。
+范围：`backend/internal/platform`（服务）及子包 `api`（HTTP）、`money`、`ids`、`blob`、`gateway`、`sandbox`、`table`；`backend/cmd/server`（进程角色与公开监听）、`backend/cmd/seed-platform`（开发价格表）；`runtime/sandbox`（沙箱镜像与协议）；[contracts/platform.openapi.yaml](../contracts/platform.openapi.yaml)（49 个操作）。运行方式见[本地开发指南](development.md)。
 
 **已实现并有自动化测试**
 
