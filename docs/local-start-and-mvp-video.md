@@ -2,6 +2,8 @@
 
 本文说明如何在 Windows 本机启动 AgentLab，并录制一段可复核 MVP 主链路的最小使用视频。命令均从仓库根目录执行；其他系统把 PowerShell 写法替换为对应 shell 即可。评委讲解口径见 [黑客松演示与协作](hackathon-guide.md)。
 
+按当前“对话”入口录屏时，使用[演示操作与口播脚本](demo-script.md)中的逐屏操作和台词；本文继续提供环境启动步骤，以及 Agent Playground / API 调试路径的补充说明。仓库已提供可直接选用的 [demo/orders.csv](../demo/orders.csv)。
+
 本文按当前代码事实（2026-10-25）编写：浏览器工作台使用 MongoDB、真实模型连接和 Docker 沙箱完成文件分析 Run；服务端同时提供 9 个预设 Agent，包括通用代码生成、工作台搭建师、GPU 计算和代码 Agent。云端多租户、对象存储、KMS、支付和 SLA 不在本地 MVP 验收范围。边界以 README.md、docs/implementation-status.md 和 DESIGN.md 为准。预设清单见 [预设 Agent 与工具目录](preset-agents.md)。
 
 ## 1. 录制目标与边界
@@ -132,16 +134,17 @@ pnpm dev
 
 ## 5. 准备最小输入文件
 
-在仓库根目录创建 demo/orders.csv：
+仓库已提供 demo/orders.csv，可直接在文件选择器中选用。在根目录查看内容：
 
 ```powershell
-New-Item -ItemType Directory -Force demo | Out-Null
-@'
+Get-Content -LiteralPath demo/orders.csv -Encoding UTF8
+```
+
+```csv
 order_id,region,amount
 A001,east,12.50
 A002,west,20.00
 A003,east,3.25
-'@ | Set-Content -Encoding UTF8 demo/orders.csv
 ```
 
 文件只有三行数据，适合录屏和人工复核。可预期东部金额为 15.75、西部金额为 20.00，但视频应以实际产物为准，不要在模型完成前先声称结果。不要使用含姓名、邮箱、真实订单或供应商秘密的文件。
@@ -256,7 +259,7 @@ Invoke-WebRequest -Method Put -Uri ("http://127.0.0.1:8787" + $ticket.uploadUrl)
 
 $agents = Invoke-RestMethod -Method Get -Uri "$api/agents" -Headers $headers
 $models = Invoke-RestMethod -Method Get -Uri "$api/models" -Headers $headers
-$agent = $agents.items[0]
+$agent = $agents.items | Where-Object { $_.id -eq 'agt_file_analysis' } | Select-Object -First 1
 $model = $models.items | Where-Object { $_.usable -eq $true } | Select-Object -First 1
 ```
 
@@ -289,11 +292,10 @@ Invoke-RestMethod -Method Get -Uri "$api/artifacts?kind=output&runId=$($run.id)"
 
 ### 8.3 清理
 
-录制后立即在“API 密钥”页撤销 video-demo。仅为演示创建的模型连接也应撤销；撤销会阻止后续派发，但不能撤回已发送请求或已发生费用。删除临时文件和环境变量：
+录制后立即在“API 密钥”页撤销 video-demo。仅为演示创建的模型连接也应撤销；撤销会阻止后续派发，但不能撤回已发送请求或已发生费用。清除临时环境变量，保留仓库提供的演示 CSV：
 
 ```powershell
 Remove-Item Env:AGENTLAB_API_KEY -ErrorAction SilentlyContinue
-Remove-Item demo/orders.csv -ErrorAction SilentlyContinue
 ```
 
 不要执行 db:down，直到确认已保存截图或审计证据；该命令停止数据库容器但默认保留数据卷。

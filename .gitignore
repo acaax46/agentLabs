@@ -27,3 +27,7 @@ runtime/agents/node_modules/
 runtime/**/__pycache__/
 runtime/**/*.part
 .tools/
+/.archify/
+*.[pP][dD][fF]
+/demo.mp4
+/demo-voiceover.txt

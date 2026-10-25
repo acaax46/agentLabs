@@ -1,6 +1,12 @@
-# AgentLab 设计元数据与验收证据
+# AgentLab 设计元数据、验收证据与演示成品
 
-当前批准方向为黑色极客工作台，规则见 [DESIGN.md](../DESIGN.md)。本目录只保留当前规范、品牌状态、验收记录和过渡 Logo，不作为运行时资源目录。
+当前批准方向为黑色极客工作台，规则见 [DESIGN.md](../DESIGN.md)。本目录保留当前规范、品牌状态、验收记录、过渡 Logo 和处理后的演示成品，不作为运行时资源目录。
+
+## 演示成品
+
+- [demo-voiceover.mp4](demo-voiceover.mp4)：约 2 分 52 秒的中文女声演示视频，包含同步字幕、章节转场与密钥明文遮挡；输入过程以 3 倍速播放，天气卡片使用模拟演示数据。
+- [demo-voiceover.mp3](demo-voiceover.mp3)：与成片对齐的独立配音音轨。
+- [demo-captions.srt](demo-captions.srt)：同步字幕，供后续剪辑使用。
 
 ## 保留文件
 

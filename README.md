@@ -8,12 +8,45 @@ AgentLab 的新方向是托管 Agent 执行与 Tools API 平台：用户通过�
 
 按文档完整 MVP 条款复核，本机主链路与前端接入已完成；验证只在本地运行，不依赖远程 CI。真实模型质量、云端多租户、商业支付与 SLA 不属于本机通过范围；逐项状态见 [MVP 核心需求复核](docs/implementation-status.md#mvp-核心需求复核2026-10-24)。
 
+## 演示视频
+
+[观看中文女声配音成片（约 2 分 52 秒）](assets/demo-voiceover.mp4)
+
+视频展示 Agent、模型与沙箱配置、代码任务提交、已有天气卡片产物预览、运行记录、项目 API 密钥创建及用量管理。成片包含同步字幕与章节转场，输入过程以 3 倍速播放；天气卡片使用模拟演示数据，完整 API 密钥已遮挡。
+
+[独立配音音轨](assets/demo-voiceover.mp3) · [SRT 字幕](assets/demo-captions.srt)
+
+## 技术架构
+
+以下两张图由 Archify 按当前源码生成，展示本机已实现的技术链路。云端多租户、对象存储、KMS 与商业支付的规划见[平台总设计](docs/agentlab-platform-design.md)，当前实现边界见[实施现状](docs/implementation-status.md)。
+
+### 平台整体架构
+
+React + TypeScript 工作台与外部应用通过两套入口访问同一 Go 平台业务。MongoDB 副本集保存业务状态、Run 队列、事件、用量与账本；Worker 领取租约后编排执行，模型请求在容器执行域外转发，代码在无网 Docker 沙箱中运行，文件字节写入本地 Blob 存储。
+
+[![AgentLab 技术架构：工作台与外部 API 接入 Go 平台，MongoDB 持久化队列和账本，Worker 连接模型网关、隔离沙箱与本地文件存储](docs/diagrams/agentlab-platform.png)](docs/diagrams/agentlab-platform.png)
+
+[SVG 矢量版](docs/diagrams/agentlab-platform.svg)
+
+### 核心 MVP 技术链路
+
+以文件分析 Agent 的内置引擎为例：上传文件后，提交指定版本、模型、费用上限与幂等键；预算预占、Run 入队、首条事件和幂等凭据在同一事务内提交，成功后返回 `202`。Worker 经模型与工具循环生成产物，追加用量并按证据结算；工作台或 API 客户端通过 SSE 查看进度、预览和下载结果。图中纵向位置表示逻辑顺序，不表示实测耗时。
+
+[![核心 MVP 时序：文件上传、事务预占入队、Worker 领取租约、模型调用、无网代码执行、产物保存、结算和 SSE 交付](docs/diagrams/agentlab-mvp.png)](docs/diagrams/agentlab-mvp.png)
+
+[SVG 矢量版](docs/diagrams/agentlab-mvp.svg)
+
+对话每轮创建同类 Run，跨轮保存消息与文件，容器按轮回收。`files.transform` 与 `files.bundle` 在可信 Worker 内执行；独立 Tools API 复用工具和账本，跳过模型循环。已派发的未知结果保留预占待核对，不盲目重发或退款；BYOK 模型费由客户承担。
+
+仓库页面直接显示从 Archify 交互版截取的高清 PNG，点击图片可查看原图。交互版与图源保留在本机 `.archify/`，不随仓库提交。[图表来源与重新生成说明](docs/diagrams/README.md)。
+
 ## 文档入口
 
 - [平台总设计](docs/agentlab-platform-design.md)：产品、Agent API、Tools API、模型接入、计费、权限、架构与路线。
 - [平台接口契约](contracts/platform.openapi.yaml)：已实现的托管 Agent / Tools API（`/v1`），由 `pnpm check:platform-contract` 对真实响应核对。
 - [黑色极客视觉规范](DESIGN.md)：目标配色、布局、控件、运行与账单交互。
 - [实施现状与迁移边界](docs/implementation-status.md)：已有代码与未来目标的区别。
+- [演示操作与口播脚本](docs/demo-script.md)：按当前对话入口编排的逐屏操作、可复制指令、完整台词及 API/工具扩展片段。
 - [本地启动与 MVP 视频脚本](docs/local-start-and-mvp-video.md)：从本机启动到录制最小真实主链路的逐步说明。
 - [黑客松演示与协作](docs/hackathon-guide.md)：能演示什么、不能宣称什么、队友适合补哪些文档。
 - [预设 Agent 与工具目录](docs/preset-agents.md)：9 个平台预设 Agent、3 个工具版本，以及演示时怎么选。
@@ -25,16 +58,16 @@ AgentLab 的新方向是托管 Agent 执行与 Tools API 平台：用户通过�
 
 ## 仓库结构
 
-| 目录              | 当前用途                                                      |
-| ----------------- | ------------------------------------------------------------- |
-| frontend/         | React + TypeScript，浏览器与 Wails 共用界面；等待新工作台迁移 |
-| backend/          | Go 本地 API、桌面绑定、账户、资料、执行与计量原型             |
-| contracts/        | 本地 /api/v1 契约（openapi.yaml）与托管平台 /v1 契约          |
-| runtime/          | Linux guest、OpenSandbox、CLI/MCP 的开发验证资产              |
-| docs/             | 总设计、实施现状、演示说明、预设目录与代码地图                  |
-| assets/           | 品牌元数据、目标 tokens 和历史图片素材                        |
-| scripts/          | 现有开发、构建与检查编排                                      |
-| compose.test.yaml | 本地 MongoDB 单节点副本集                                  |
+| 目录              | 当前用途                                                        |
+| ----------------- | --------------------------------------------------------------- |
+| frontend/         | React + TypeScript 黑色工作台；对话、项目、运行、产物与用量界面 |
+| backend/          | Go 平台 API、任务与工具编排、预算账本、沙箱执行；保留历史业务   |
+| contracts/        | 本地 /api/v1 契约（openapi.yaml）与托管平台 /v1 契约            |
+| runtime/          | Linux guest、OpenSandbox、CLI/MCP 的开发验证资产                |
+| docs/             | 总设计、实施现状、技术图、演示说明、预设目录与代码地图          |
+| assets/           | 品牌元数据、目标 tokens、验收证据与演示成品                     |
+| scripts/          | 现有开发、构建与检查编排                                        |
+| compose.test.yaml | 本地 MongoDB 单节点副本集                                       |
 
 Hydro/、OpenSandbox/ 是被忽略的上游参考目录；.cache/、.tools/ 和 build/ 为本地工具或产物，不作为产品规范。
 
@@ -111,6 +144,19 @@ $env:AGENTLAB_SANDBOX_GPU_IMAGE = "agentlab/sandbox-python-cuda:20261025"
 $env:AGENTLAB_SANDBOX_AGENT_IMAGE = "agentlab/sandbox-agents:20261025"
 $env:AGENTLAB_SANDBOX_CPUS = "4"; $env:AGENTLAB_SANDBOX_MEMORY_MB = "8192" # GPU 规格需要 4 vCPU / 8 GiB
 ```
+
+在同一个 PowerShell 窗口执行 `pnpm dev:api --env-file .env.dev`，这些设置才会传给新启动的 API 进程。也可将以下配置写入根目录 `.env.dev`，之后通过同一启动命令加载；修改后需重启 API：
+
+```dotenv
+AGENTLAB_SANDBOX_GPUS=0
+AGENTLAB_SANDBOX_GPU_IMAGE=agentlab/sandbox-python-cuda:20261025
+# 可选：代码 Agent 引擎，需先构建对应镜像
+AGENTLAB_SANDBOX_AGENT_IMAGE=agentlab/sandbox-agents:20261025
+AGENTLAB_SANDBOX_CPUS=4
+AGENTLAB_SANDBOX_MEMORY_MB=8192
+```
+
+代码 Agent 引擎需要显式配置 `AGENTLAB_SANDBOX_AGENT_IMAGE`；即使 Docker 中已有镜像，未配置时仍会提示“此部署没有可用的代码 Agent 沙箱镜像”。GPU 默认关闭；“此执行节点没有开放 GPU”表示 API 进程没有收到显卡序号配置。启动后会后台运行 CUDA 检查，短暂显示“正在检查”时稍后刷新即可。
 
 - GPU：Docker 需带 NVIDIA 运行时（Docker Desktop + WSL2 已提供）。每张列出的卡先在 CUDA 镜像里跑一次真实矩阵运算，通过后才出现在规格里；规格按型号逐词匹配显卡名，GPU 按卡型计价、每次代码执行独占整卡，容器仍无网络、只读根、非 root。本机预设为 `gpu-rtx3070-laptop-4-8`（RTX 3070 Laptop），只有声明了 GPU 规格的 Agent 版本（如“GPU 计算 Agent”）能使用。
 - 代码 Agent 引擎：“代码 Agent（可选引擎）”的运行可选 `harness`（`pi`、`opencode`、`codex`、`claude-code`）。CLI 在无网络的沙箱里运行整个任务，模型请求经容器回环地址上的转发器、通过标准输入输出到宿主机：宿主机校验请求、固定冻结的模型、限制输出 token、去掉路由/插件/服务端状态与付费服务端工具，用真实凭据转发并记录供应商用量后才把答复交给 CLI；沙箱里没有真实密钥或供应商地址。Codex CLI 只支持 Responses 协议、Claude Code 只支持 Anthropic Messages 协议，所用连接必须提供 `/responses` 或 `/messages`，否则请求被拒绝且不计费。会话期间容器一直占用所选规格，沙箱秒含模型等待。

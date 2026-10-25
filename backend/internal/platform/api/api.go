@@ -97,10 +97,16 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-// writeError renders a service error. Anything that is not a deliberate *access.Error is an
-// internal fault: it is logged with the request id and reported without detail.
+// writeError renders a service error. Client cancellation needs no response; other unexpected
+// failures are logged with the request id and reported without detail.
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	requestID := w.Header().Get("X-Request-ID")
+	if errors.Is(err, context.Canceled) && errors.Is(r.Context().Err(), context.Canceled) {
+		// Database errors can wrap context.Canceled, including while checking out a connection.
+		// The caller has already left; retain a debug trace without reporting a server failure.
+		slog.Debug("platform api request canceled", "request_id", requestID, "method", r.Method, "path", r.URL.Path)
+		return
+	}
 	if wait, limited := platform.RetryAfter(err); limited {
 		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
 	}

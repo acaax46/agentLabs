@@ -276,8 +276,37 @@ func (s *Service) ensureIndexes(ctx context.Context) error {
 		{colLocks, []mongo.IndexModel{{Keys: ordered("until", 1), Options: options.Index().SetName("lock_expiry")}}},
 	}
 	for _, item := range plan {
+		if err := s.reconcileLegacyIndexes(ctx, item.collection); err != nil {
+			return fmt.Errorf("%s: %w", item.collection, err)
+		}
 		if _, err := s.col(item.collection).Indexes().CreateMany(ctx, item.indexes); err != nil {
 			return fmt.Errorf("%s: %w", item.collection, err)
+		}
+	}
+	return nil
+}
+
+// reconcileLegacyIndexes handles additive schema changes where a durable MongoDB collection already
+// has an index name with an older key definition. The conversation list index originally omitted
+// createdBy; drop only that known legacy shape before CreateMany installs the current definition.
+// Documents are untouched, and a current index is left alone on every restart.
+func (s *Service) reconcileLegacyIndexes(ctx context.Context, collection string) error {
+	if collection != colConversations {
+		return nil
+	}
+	specs, err := s.col(collection).Indexes().ListSpecifications(ctx)
+	if err != nil {
+		return err
+	}
+	for _, spec := range specs {
+		if spec.Name != "conversation_list" {
+			continue
+		}
+		if spec.KeysDocument.Lookup("createdBy").Type != 0 {
+			continue
+		}
+		if err := s.col(collection).Indexes().DropOne(ctx, spec.Name); err != nil {
+			return err
 		}
 	}
 	return nil
